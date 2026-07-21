@@ -1,25 +1,27 @@
 import { create } from 'zustand'
-import type { Rect } from '@/lib/types'
+import type { RectFrac } from '@/lib/types'
 
 type Tool = null | 'edit' | 'inpaint' | 'crop' | 'resize' | 'vary'
 
 interface UiState {
   armedTool: Tool
   pickingRef: boolean
-  // Ephemeral: the in-progress crop rect drawn by CropOverlay, in "display"
-  // units (the image area's CSS px at shape.props.w - 8 padding). Not
-  // persisted — cleared on apply/cancel/deselect, never written to a shape.
-  cropRect: Rect | null
+  // Ephemeral: the in-progress crop rect drawn by CropOverlay, as FRACTIONS
+  // (0..1) of the overlay's own measured box — not a synthetic display-unit
+  // rect. Not persisted — cleared on apply/cancel/deselect, never written to
+  // a shape. See task-10-report.md "Fix round 1" for why this replaced the
+  // old display-px Rect representation.
+  cropFrac: RectFrac | null
   setArmedTool: (t: Tool) => void
   setPickingRef: (v: boolean) => void
-  setCropRect: (r: Rect | null) => void
+  setCropFrac: (r: RectFrac | null) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
   armedTool: null,
   pickingRef: false,
-  cropRect: null,
+  cropFrac: null,
   setArmedTool: (armedTool) => set({ armedTool }),
   setPickingRef: (pickingRef) => set({ pickingRef }),
-  setCropRect: (cropRect) => set({ cropRect }),
+  setCropFrac: (cropFrac) => set({ cropFrac }),
 }))

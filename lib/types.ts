@@ -1,5 +1,12 @@
 export type Rect = { x: number; y: number; w: number; h: number } // natural px
 
+// Fractions (0..1) of a measured on-screen box, e.g. CropOverlay's rendered
+// container. Zoom-invariant by construction (numerator and denominator both
+// scale with the tldraw camera) and, with AssetView's objectFit: 'fill',
+// maps directly onto natural pixels per axis: no synthetic display-size
+// ratio involved. See task-10-report.md "Fix round 1".
+export type RectFrac = { x: number; y: number; w: number; h: number }
+
 export type Operation =
   | { type: 'generate'; prompt: string; model: string }
   | { type: 'edit'; prompt: string; model: string; referenceNodeId?: string }

@@ -2,62 +2,60 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '@/lib/ui-store'
-import type { Rect } from '@/lib/types'
+import type { RectFrac } from '@/lib/types'
 
 // Draws over the AssetView inside a selected, crop-armed ImageNodeShape.
 // Coordinates are tracked as FRACTIONS (0..1) of the overlay's own rendered
-// box, then converted to "display units" (CSS px at the shape's natural
-// display width `w`) before being written to ui-store. Fractions are
-// zoom-invariant (numerator and denominator both scale with the tldraw
-// camera), so no camera/zoom lookup is needed here — see task-10-report.md.
-function rectFrom(a: { x: number; y: number }, b: { x: number; y: number }): Rect {
+// box (measured via containerRef.getBoundingClientRect(), so it's exactly
+// the real on-screen box — no assumption about its aspect ratio) and stored
+// as-is in ui-store. Fractions are zoom-invariant (numerator and denominator
+// both scale with the tldraw camera), so no camera/zoom lookup is needed
+// here — see task-10-report.md.
+//
+// Fix round 1: this used to also derive a synthetic display height
+// `dH = w * naturalH/naturalW` and convert fractions into that "display
+// unit" space before handing them to Inspector's displayRectToNatural. That
+// assumed the rendered box's aspect ratio equals naturalW:naturalH, which
+// wasn't quite true (IMAGE_NODE_W=240 unpadded vs. 232 padded content width
+// plus a font-dependent label row), causing a systematic ~1% crop/mask
+// offset. Storing raw fractions of the REAL measured box — with AssetView
+// now using objectFit: 'fill' — sidesteps the synthetic ratio entirely:
+// Inspector converts fx/fy/fw/fh directly to natural px with no intermediate
+// display-space representation.
+function rectFrom(a: { x: number; y: number }, b: { x: number; y: number }): RectFrac {
   const x = Math.min(a.x, b.x)
   const y = Math.min(a.y, b.y)
   return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }
 }
 
-export function CropOverlay({
-  w,
-  naturalW,
-  naturalH,
-}: {
-  w: number // display width = shape.props.w - 8 (padding), matches Inspector's displayRectToNatural call
-  naturalW: number
-  naturalH: number
-}) {
+export function CropOverlay() {
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const [dragging, setDragging] = useState(false)
-  const cropRect = useUiStore((s) => s.cropRect)
-  const setCropRect = useUiStore((s) => s.setCropRect)
+  const cropFrac = useUiStore((s) => s.cropFrac)
+  const setCropFrac = useUiStore((s) => s.setCropFrac)
   const setArmedTool = useUiStore((s) => s.setArmedTool)
 
-  // Container's aspect matches the natural image's (shape height is derived
-  // from naturalH/naturalW when the node was created), so we can derive the
-  // display-unit height from the display-unit width without measuring the
-  // DOM — keeps x/y on the same scale that displayRectToNatural expects.
-  const dH = naturalW > 0 ? w * (naturalH / naturalW) : w
-
-  const toDisplay = (e: React.PointerEvent): { x: number; y: number } => {
+  const toFrac = (e: React.PointerEvent): { x: number; y: number } => {
     const r = containerRef.current!.getBoundingClientRect()
     const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
     const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
-    return { x: fx * w, y: fy * dH }
+    return { x: fx, y: fy }
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation()
     ;(e.target as Element).setPointerCapture(e.pointerId)
-    const p = toDisplay(e)
+    const p = toFrac(e)
     dragStart.current = p
     setDragging(true)
-    setCropRect({ x: p.x, y: p.y, w: 0, h: 0 })
+    setCropFrac({ x: p.x, y: p.y, w: 0, h: 0 })
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
     e.stopPropagation()
     if (!dragging || !dragStart.current) return
-    setCropRect(rectFrom(dragStart.current, toDisplay(e)))
+    setCropFrac(rectFrom(dragStart.current, toFrac(e)))
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -69,22 +67,21 @@ export function CropOverlay({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      setCropRect(null)
+      setCropFrac(null)
       setArmedTool(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [setCropRect, setArmedTool])
+  }, [setCropFrac, setArmedTool])
 
-  const box =
-    cropRect && w > 0 && dH > 0
-      ? {
-          left: `${(cropRect.x / w) * 100}%`,
-          top: `${(cropRect.y / dH) * 100}%`,
-          width: `${(cropRect.w / w) * 100}%`,
-          height: `${(cropRect.h / dH) * 100}%`,
-        }
-      : null
+  const box = cropFrac
+    ? {
+        left: `${cropFrac.x * 100}%`,
+        top: `${cropFrac.y * 100}%`,
+        width: `${cropFrac.w * 100}%`,
+        height: `${cropFrac.h * 100}%`,
+      }
+    : null
 
   return (
     <div

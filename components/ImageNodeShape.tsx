@@ -61,7 +61,18 @@ function AssetView({ props }: { props: VersionNodeProps }) {
       style={{
         width: '100%',
         height: '100%',
-        objectFit: 'cover',
+        // Fix round 1 (task-10-report.md): was 'cover'. CropOverlay now
+        // stores the crop rect as fractions of its measured box and
+        // Inspector maps those fractions straight onto natural px
+        // (fx*naturalW, fy*naturalH) with no aspect-ratio correction in
+        // between. That mapping is only exact if the rendered image itself
+        // is stretched to fill the box on both axes — 'cover' instead
+        // uniform-scales-and-clips, which would silently offset the crop by
+        // the box/natural aspect mismatch (the ~1% this fix targets) even
+        // with fraction-based coordinates. 'fill' trades a bounded ~1%
+        // visual stretch (the box is very close to, but not exactly,
+        // naturalW:naturalH already) for exact coordinate correctness.
+        objectFit: 'fill',
         borderRadius: 4,
         pointerEvents: 'none',
       }}
@@ -198,7 +209,7 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
             </div>
           </div>
         )}
-        {showCropOverlay && <CropOverlay w={p.w - 8} naturalW={p.naturalW} naturalH={p.naturalH} />}
+        {showCropOverlay && <CropOverlay />}
       </div>
       <div
         style={{

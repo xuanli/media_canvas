@@ -4,9 +4,8 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useEditor, useValue } from 'tldraw'
 import { useUiStore } from '@/lib/ui-store'
 import { runOp, runInstantOp } from '@/lib/run-op'
-import { displayRectToNatural } from '@/lib/geometry'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
-import type { Rect } from '@/lib/types'
+import type { RectFrac } from '@/lib/types'
 
 // Crop aspect presets (task-10 brief: "keep it simple" — a preset fits the
 // CURRENT rect, or a centered default, to that ratio; it does not live-
@@ -18,33 +17,51 @@ const ASPECT_PRESETS = [
   ['free', null],
 ] as const
 
-function fitToAspect(dW: number, dH: number, ratio: number, current: Rect | null): Rect {
-  if (current && current.w > 4 && current.h > 4) {
-    const cx = current.x + current.w / 2
-    const cy = current.y + current.h / 2
-    let w = current.w
+// Fix round 1 (task-10-report.md): operates in NATURAL pixel space so a
+// preset ratio (e.g. 4:5) means what it says against the actual image, then
+// converts back to fractions of the measured box for storage in ui-store.
+// This is deliberately independent of the box's own on-screen aspect ratio.
+function fitToAspect(
+  naturalW: number,
+  naturalH: number,
+  ratio: number,
+  current: RectFrac | null
+): RectFrac {
+  if (current && current.w * naturalW > 4 && current.h * naturalH > 4) {
+    const cw = current.w * naturalW
+    const ch = current.h * naturalH
+    const cx = current.x * naturalW + cw / 2
+    const cy = current.y * naturalH + ch / 2
+    let w = cw
     let h = w / ratio
-    if (h > dH) {
-      h = current.h
+    if (h > naturalH) {
+      h = ch
       w = h * ratio
     }
-    w = Math.min(w, dW)
-    h = Math.min(h, dH)
-    return {
-      x: Math.max(0, Math.min(dW - w, cx - w / 2)),
-      y: Math.max(0, Math.min(dH - h, cy - h / 2)),
-      w,
-      h,
-    }
+    w = Math.min(w, naturalW)
+    h = Math.min(h, naturalH)
+    const x = Math.max(0, Math.min(naturalW - w, cx - w / 2))
+    const y = Math.max(0, Math.min(naturalH - h, cy - h / 2))
+    return { x: x / naturalW, y: y / naturalH, w: w / naturalW, h: h / naturalH }
   }
-  // No rect drawn yet: a centered default at ~60% of the image display size.
-  let w = dW * 0.6
+  // No rect drawn yet: a centered default at ~60% of the natural image size.
+  let w = naturalW * 0.6
   let h = w / ratio
-  if (h > dH * 0.9) {
-    h = dH * 0.6
+  if (h > naturalH * 0.9) {
+    h = naturalH * 0.6
     w = h * ratio
   }
-  return { x: (dW - w) / 2, y: (dH - h) / 2, w, h }
+  const x = (naturalW - w) / 2
+  const y = (naturalH - h) / 2
+  return { x: x / naturalW, y: y / naturalH, w: w / naturalW, h: h / naturalH }
+}
+
+// Guard shared by the Apply button's disabled state and applyCrop's own
+// no-op check: both must agree on what counts as "too small to crop" (Minor
+// from task-10 review — the disabled check used to only look at w).
+function cropTooSmall(frac: RectFrac | null, naturalW: number, naturalH: number): boolean {
+  if (!frac) return true
+  return frac.w * naturalW < 4 || frac.h * naturalH < 4
 }
 
 // Hardcoded client-side per the task brief: this is the "model picker where
@@ -111,7 +128,7 @@ const formSection: CSSProperties = {
 
 export function Inspector() {
   const editor = useEditor()
-  const { armedTool, setArmedTool, cropRect, setCropRect } = useUiStore()
+  const { armedTool, setArmedTool, cropFrac, setCropFrac } = useUiStore()
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<string>(EDIT_MODELS[0].id)
   const [variants, setVariants] = useState(1)
@@ -131,7 +148,7 @@ export function Inspector() {
 
   // Reset form state when selection changes — including the crop rect, so a
   // stale rect drawn on a previously-selected node doesn't ghost onto the
-  // next one (cropRect is global ui-store state, not per-shape).
+  // next one (cropFrac is global ui-store state, not per-shape).
   const selId = sel?.id ?? null
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -139,14 +156,14 @@ export function Inspector() {
     setModel(EDIT_MODELS[0].id)
     setVariants(1)
     setPreset('free')
-    setCropRect(null)
-  }, [selId, setCropRect])
+    setCropFrac(null)
+  }, [selId, setCropFrac])
 
   // Clear the drawn crop rect whenever crop isn't the active tool (switching
   // to another verb, or un-arming), so it doesn't linger for next time.
   useEffect(() => {
-    if (armedTool !== 'crop') setCropRect(null)
-  }, [armedTool, setCropRect])
+    if (armedTool !== 'crop') setCropFrac(null)
+  }, [armedTool, setCropFrac])
 
   // Resize form seeds from the shape's natural size each time it's (re-)armed
   // for this selection, but not on every keystroke thereafter.
@@ -197,29 +214,33 @@ export function Inspector() {
     setVariants(1)
   }
 
-  // Display width the CropOverlay measures against (shape.props.w minus the
-  // 4px padding on each side) — must match ImageNodeShape's `w={p.w - 8}`.
-  const dW = p.w - 8
-  const dH = p.naturalW > 0 ? dW * (p.naturalH / p.naturalW) : dW
-
   const pickPreset = (name: string, ratio: number | null) => {
     setPreset(name)
     if (ratio === null) return // 'free': leave whatever rect is already drawn as-is
-    setCropRect(fitToAspect(dW, dH, ratio, cropRect))
+    setCropFrac(fitToAspect(p.naturalW, p.naturalH, ratio, cropFrac))
   }
 
+  // Fix round 1 (task-10-report.md): cropFrac is a fraction of the measured
+  // overlay box, not a synthetic display-unit rect — natural px is computed
+  // directly (fx*naturalW, fy*naturalH per axis) and clamped to bounds,
+  // bypassing displayRectToNatural entirely for this path.
   const applyCrop = () => {
-    if (!cropRect || cropRect.w < 4 || cropRect.h < 4) return
-    void runInstantOp(editor, sel.id, { type: 'crop', rect: displayRectToNatural(cropRect, dW, p.naturalW) })
+    if (cropTooSmall(cropFrac, p.naturalW, p.naturalH)) return
+    const f = cropFrac!
+    const x = Math.min(p.naturalW, Math.max(0, Math.round(f.x * p.naturalW)))
+    const y = Math.min(p.naturalH, Math.max(0, Math.round(f.y * p.naturalH)))
+    const w = Math.max(1, Math.min(p.naturalW - x, Math.round(f.w * p.naturalW)))
+    const h = Math.max(1, Math.min(p.naturalH - y, Math.round(f.h * p.naturalH)))
+    void runInstantOp(editor, sel.id, { type: 'crop', rect: { x, y, w, h } })
     setArmedTool(null)
-    setCropRect(null)
+    setCropFrac(null)
   }
 
   const applyResize = () => {
     if (width < 1 || height < 1) return
     void runInstantOp(editor, sel.id, { type: 'resize', width: Math.round(width), height: Math.round(height) })
     setArmedTool(null)
-    setCropRect(null)
+    setCropFrac(null)
   }
 
   const onWidthChange = (v: number) => {
@@ -330,7 +351,11 @@ export function Inspector() {
               </button>
             ))}
           </div>
-          <button onClick={applyCrop} disabled={!cropRect || cropRect.w < 4} style={applyBtn}>
+          <button
+            onClick={applyCrop}
+            disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH)}
+            style={applyBtn}
+          >
             Apply — instant
           </button>
         </div>
