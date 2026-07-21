@@ -67,6 +67,15 @@ export function Inspector() {
     [editor]
   )
 
+  // Reset form state when selection changes
+  const selId = sel?.id ?? null
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPrompt('')
+    setModel(EDIT_MODELS[0].id)
+    setVariants(1)
+  }, [selId])
+
   // Vary (locked decision): fires immediately on arming, no form. Guarded by
   // a ref keyed on the selected shape id so a dev-mode StrictMode double
   // effect invocation (or any re-render while still armed) can't double-fire
