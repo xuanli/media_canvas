@@ -628,6 +628,163 @@
     </div>
   </div>
 
+  <!-- ══════════════════════ V2 CHROME: NAV + COMMAND BAR ══════════════════════ -->
+  <div class="section" id="chrome">
+    <div class="opt-head"><span class="opt-tag">v2 chrome</span><h2>Top nav + one centered command bar</h2></div>
+    <p class="opt-sub">
+      Post-build UX iteration. Two moves: a slim <b>top nav</b> (canvas switching, new,
+      share-link, export) and a <b>centered bottom command bar</b> that is the single home for
+      input — generate &amp; upload when nothing is selected, and the editing surface when a node
+      is selected. Three approaches to the morph below; the nav is common to all.
+    </p>
+
+    <div class="mk" style="aspect-ratio:16/4.6;" role="img" aria-label="Top nav mockup">
+      <div style="position:absolute; top:0; left:0; right:0; height:34px; background:var(--mk-panel);
+        border-bottom:1px solid var(--mk-line); display:flex; align-items:center; gap:8px; padding:0 12px;">
+        <span style="font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--mk-ink);"><b>gen_media</b></span>
+        <span class="mk-btn ghost" style="font-size:9px;">ramen-shop-branding ▾</span>
+        <span style="font-size:8.5px; color:var(--mk-muted);">(recent canvases — stored in this browser)</span>
+        <span style="flex:1;"></span>
+        <span class="mk-btn" style="font-size:9px;">+ New canvas</span>
+        <span class="mk-btn" style="font-size:9px;">Share · copy link</span>
+        <span class="mk-btn ghost" style="font-size:9px;">Export ▾</span>
+        <span style="font-size:9px; color:#7ec9a2;">● saved</span>
+      </div>
+      <div style="position:absolute; top:48px; left:12px; font-size:9px; color:var(--mk-muted); font-family:ui-monospace,Menlo,monospace;">
+        canvas area below · nav is 34px, always visible · Share = copy /c/:id URL · Export menu = JSON / PNG of selected node
+      </div>
+    </div>
+    <p class="mk-caption"><b>Nav (common to all approaches):</b> wordmark · recent-canvas switcher (client-side history) · New · Share-link · Export · save-state dot.</p>
+  </div>
+
+  <div class="section" id="barA">
+    <div class="opt-head"><span class="opt-tag">Bar A</span><h2>Morphing bar — one bar, two moods</h2></div>
+    <p class="opt-sub">The bar itself transforms on selection: creation controls swap to verb chips + inline params. Everything lives on one row (wraps to two on narrow screens). Most minimal; keyboard-first.</p>
+    <div class="duo" style="position:relative; inset:auto; padding:0; gap:2.5%;">
+      <div class="mini" style="height:auto; aspect-ratio:16/9;">
+        <span class="screen-label">nothing selected → create</span>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:86%;
+          background:var(--mk-panel); border:1px solid var(--mk-line); border-radius:9px; padding:6px; display:flex; gap:5px; align-items:center;">
+          <span class="mk-btn" style="font-size:8.5px;">📎 Upload</span>
+          <span class="mk-input" style="flex:1;">Describe a new image…</span>
+          <span class="mk-btn primary" style="font-size:8.5px;">Generate</span>
+        </div>
+      </div>
+      <div class="mini" style="height:auto; aspect-ratio:16/9;">
+        <span class="screen-label">v5 selected → the same bar edits</span>
+        <div class="node sel" style="left:38%; top:10%; width:22%;"><div class="ph v3"></div><span class="nlabel">v5 · inpaint</span></div>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:94%;
+          background:var(--mk-panel); border:1px solid var(--mk-accent); border-radius:9px; padding:6px; display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
+          <span style="font-family:ui-monospace,Menlo,monospace; font-size:8.5px; color:var(--mk-accent);">v5</span>
+          <span class="mk-btn" style="font-size:8px; background:var(--mk-accent); color:#0b2622; border-color:var(--mk-accent);">✦ Edit</span>
+          <span class="mk-btn ghost" style="font-size:8px;">✦ Inpaint</span><span class="mk-btn ghost" style="font-size:8px;">✦ Vary</span>
+          <span class="mk-btn ghost" style="font-size:8px;">Crop</span><span class="mk-btn ghost" style="font-size:8px;">Resize</span>
+          <span class="mk-input" style="flex:1; min-width:90px;">describe the change…</span>
+          <span class="mk-btn ghost" style="font-size:8px;">nano-banana ▾</span>
+          <span class="mk-btn ghost" style="font-size:8px;">×3</span>
+          <span class="mk-btn ghost" style="font-size:8px;">+ Ref</span>
+          <span class="mk-btn primary" style="font-size:8.5px;">Run</span>
+        </div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="pc-col pro"><h3>Pros</h3><ul>
+        <li><b>One object to learn</b>; the morph itself communicates "selection = editing".</li>
+        <li>Fastest flow: click node, type, Enter. Keyboard-friendly.</li>
+        <li>Least chrome; canvas stays maximally visible.</li></ul></div>
+      <div class="pc-col con"><h3>Cons</h3><ul>
+        <li>Dense: verbs + prompt + params on one row gets tight; wraps on laptops.</li>
+        <li>Node recipe/metadata (the provenance story) loses its display home unless added as a hover/tooltip.</li></ul></div>
+    </div>
+  </div>
+
+  <div class="section" id="barB">
+    <div class="opt-head"><span class="opt-tag">Bar B</span><h2>Bar + tray — the bar stays calm, params get a shelf</h2></div>
+    <p class="opt-sub">Selection morphs the bar to verbs only; arming a verb slides a tray up from the bar with that verb's full controls (prompt, model, variants, reference, aspect presets). Recipe line lives in the tray header.</p>
+    <div class="duo" style="position:relative; inset:auto; padding:0; gap:2.5%;">
+      <div class="mini" style="height:auto; aspect-ratio:16/9;">
+        <span class="screen-label">v5 selected → verbs only</span>
+        <div class="node sel" style="left:38%; top:10%; width:22%;"><div class="ph v3"></div><span class="nlabel">v5 · inpaint</span></div>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+          background:var(--mk-panel); border:1px solid var(--mk-line); border-radius:9px; padding:6px 8px; display:flex; gap:4px; align-items:center;">
+          <span style="font-family:ui-monospace,Menlo,monospace; font-size:8.5px; color:var(--mk-accent);">v5 · inpaint · 1344×840</span>
+          <span class="mk-btn ghost" style="font-size:8px;">✦ Edit</span><span class="mk-btn ghost" style="font-size:8px;">✦ Inpaint</span>
+          <span class="mk-btn ghost" style="font-size:8px;">✦ Vary</span><span class="mk-btn ghost" style="font-size:8px;">Crop</span>
+          <span class="mk-btn ghost" style="font-size:8px;">Resize</span><span class="mk-btn ghost" style="font-size:8px;">⬇</span>
+        </div>
+      </div>
+      <div class="mini" style="height:auto; aspect-ratio:16/9;">
+        <span class="screen-label">✦ Edit armed → tray slides up</span>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:64%;
+          background:var(--mk-panel); border:1px solid var(--mk-accent); border-radius:9px; overflow:hidden;">
+          <div style="padding:6px 8px; border-bottom:1px solid var(--mk-line); font-family:ui-monospace,Menlo,monospace; font-size:8px; color:var(--mk-muted);">
+            ✦ Edit v5 — creates children of v5</div>
+          <div style="padding:7px 8px; display:flex; flex-direction:column; gap:5px;">
+            <span class="mk-input" style="height:26px;">describe the change…</span>
+            <div style="display:flex; gap:4px; align-items:center;">
+              <span class="mk-btn ghost" style="font-size:8px;">nano-banana ▾</span>
+              <span class="mk-btn ghost" style="font-size:8px;">variants ×3</span>
+              <span class="mk-btn ghost" style="font-size:8px;">+ Reference</span>
+              <span class="mk-btn primary" style="margin-left:auto; font-size:8.5px;">Run</span>
+            </div>
+          </div>
+          <div style="padding:5px 8px; border-top:1px solid var(--mk-line); display:flex; gap:4px;">
+            <span class="mk-btn" style="font-size:8px; background:var(--mk-accent); color:#0b2622;">✦ Edit</span>
+            <span class="mk-btn ghost" style="font-size:8px;">✦ Inpaint</span><span class="mk-btn ghost" style="font-size:8px;">✦ Vary</span>
+            <span class="mk-btn ghost" style="font-size:8px;">Crop</span><span class="mk-btn ghost" style="font-size:8px;">Resize</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="pc-col pro"><h3>Pros</h3><ul>
+        <li>Room for everything — recipe, params, reference chip — without cramming.</li>
+        <li>Scales to future tools (text overlay, brush) without redesign.</li>
+        <li>The slide-up morph is a satisfying, legible transition.</li></ul></div>
+      <div class="pc-col con"><h3>Cons</h3><ul>
+        <li>Two-step (select verb → tray) adds a beat vs Bar A.</li>
+        <li>Open tray covers more canvas bottom; needs Esc discipline.</li></ul></div>
+    </div>
+  </div>
+
+  <div class="section" id="barC">
+    <div class="opt-head"><span class="opt-tag">Bar C</span><h2>Split — verbs stay on the node, params dock in the bar</h2></div>
+    <p class="opt-sub">Keeps today's on-node action menu (spatial, near the thing you're editing); the bottom bar hosts creation controls normally and swaps to the armed verb's params when a tool is armed. A hybrid of current UI and Bar B.</p>
+    <div class="duo" style="position:relative; inset:auto; padding:0; gap:2.5%;">
+      <div class="mini" style="height:auto; aspect-ratio:16/9;">
+        <span class="screen-label">verbs at the node (as today)</span>
+        <div class="node sel" style="left:34%; top:22%; width:22%;"><div class="ph v3"></div><span class="nlabel">v5 · inpaint</span></div>
+        <div class="actmenu" style="left:34%; top:12%;"><span><i>✦</i> Edit</span><span><i>✦</i> Inpaint</span><span class="det">Crop</span></div>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:70%;
+          background:var(--mk-panel); border:1px solid var(--mk-line); border-radius:9px; padding:6px; display:flex; gap:5px;">
+          <span class="mk-btn" style="font-size:8.5px;">📎 Upload</span>
+          <span class="mk-input" style="flex:1;">Describe a new image…</span>
+          <span class="mk-btn primary" style="font-size:8.5px;">Generate</span>
+        </div>
+      </div>
+      <div class="mini" style="height:auto; aspect-ratio:16/9;">
+        <span class="screen-label">✦ Edit armed → bar becomes params</span>
+        <div class="node sel" style="left:34%; top:22%; width:22%;"><div class="ph v3"></div><span class="nlabel">v5 · inpaint</span></div>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:80%;
+          background:var(--mk-panel); border:1px solid var(--mk-accent); border-radius:9px; padding:6px; display:flex; gap:4px; align-items:center;">
+          <span style="font-family:ui-monospace,Menlo,monospace; font-size:8px; color:var(--mk-accent);">✦ Edit v5</span>
+          <span class="mk-input" style="flex:1;">describe the change…</span>
+          <span class="mk-btn ghost" style="font-size:8px;">nano-banana ▾</span>
+          <span class="mk-btn ghost" style="font-size:8px;">×3</span><span class="mk-btn ghost" style="font-size:8px;">+ Ref</span>
+          <span class="mk-btn primary" style="font-size:8.5px;">Run</span>
+        </div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="pc-col pro"><h3>Pros</h3><ul>
+        <li>Verbs stay spatially attached to the node — the map metaphor stays pure.</li>
+        <li>Smallest change from the shipped UI (lowest cost, ~half of A/B).</li></ul></div>
+      <div class="pc-col con"><h3>Cons</h3><ul>
+        <li>Attention ping-pongs between node (verbs) and bar (typing).</li>
+        <li>Two chrome locations to keep visually coherent.</li></ul></div>
+    </div>
+  </div>
+
   <p class="foot">
     <b>Considered and set aside:</b> Studio Split (big stage + tree sidebar) — precision was
     great but it demoted the branching tree to a layers panel; Map &amp; Focus (canvas + full-screen

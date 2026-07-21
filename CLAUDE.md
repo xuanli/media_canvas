@@ -35,7 +35,14 @@ polishing what exists? If no — cut it or park it in "Later".
   inpaint (rect region), upload, crop, resize. Multi-variant runs create
   pending sibling nodes; errors are retryable nodes. (Text overlay → stretch;
   displaced by shareable canvases 2026-07-20.)
-- **Toolset UX**: one flat action menu on the selected node; AI ops carry a ✦
+- **V2 chrome (user decision 2026-07-21, post-v0.1)**: slim top nav (recent-canvas
+  switcher client-side, new/share-link/export, save dot) + ONE centered bottom
+  command bar replacing PromptBar/Inspector/ActionMenu — "Bar B": idle =
+  upload+generate; selected = recipe + verb row; armed = tray slides up with
+  the verb's controls. Upload-as-root-node is back in scope via the bar.
+  Mockups: docs/design/ux-directions.html §v2-chrome.
+- **Toolset UX**: one flat action menu on the selected node (v1; verbs move
+  into the command bar in v2 chrome); AI ops carry a ✦
   spark badge (model call, ~seconds, N variants), instant ops don't (free, live
   preview). Every tool uses the same three-beat loop: arm → configure on the
   image → commit creates child node(s).

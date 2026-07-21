@@ -5,7 +5,7 @@ every deploy, and once against production after every deploy.
 
 **Automation coverage** (so you know what's already proven before you start):
 
-- `pnpm test` — unit tests on pure logic (tree ops, geometry, schemas, error
+- `pnpm test` — unit tests on pure logic (tree ops, schemas, error
   normalization). `lib/__tests__/*.test.ts`.
 - `pnpm test:e2e` — Playwright, fully mocked (`FAL_MOCK=1 STORAGE_MOCK=1`, no
   real fal spend, no Blob token, no passcode needed). Exercises: generate →
