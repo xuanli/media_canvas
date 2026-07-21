@@ -1,0 +1,637 @@
+<title>gen_media — UX Directions</title>
+<style>
+  :root {
+    --paper: #f5f6f8;
+    --panel: #ffffff;
+    --ink: #1b222c;
+    --muted: #5b6673;
+    --line: #dce1e8;
+    --accent: #0f9d8f;
+    --accent-soft: rgba(15, 157, 143, 0.12);
+    --good: #0f9d8f;
+    --bad: #b25e51;
+    /* mockup world: fixed dark, the app itself is a dark-UI tool */
+    --mk-bg: #14171c;
+    --mk-bg2: #181c22;
+    --mk-panel: #1e232b;
+    --mk-panel2: #232933;
+    --mk-line: #2d3540;
+    --mk-ink: #dfe5ec;
+    --mk-muted: #8a95a3;
+    --mk-accent: #2dd4bf;
+    --mk-accent-soft: rgba(45, 212, 191, 0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #101318;
+      --panel: #171b21;
+      --ink: #e6eaef;
+      --muted: #98a2ae;
+      --line: #262d36;
+      --accent: #2dd4bf;
+      --accent-soft: rgba(45, 212, 191, 0.14);
+      --good: #2dd4bf;
+      --bad: #d98d80;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #f5f6f8;
+    --panel: #ffffff;
+    --ink: #1b222c;
+    --muted: #5b6673;
+    --line: #dce1e8;
+    --accent: #0f9d8f;
+    --accent-soft: rgba(15, 157, 143, 0.12);
+    --good: #0f9d8f;
+    --bad: #b25e51;
+  }
+  :root[data-theme="dark"] {
+    --paper: #101318;
+    --panel: #171b21;
+    --ink: #e6eaef;
+    --muted: #98a2ae;
+    --line: #262d36;
+    --accent: #2dd4bf;
+    --accent-soft: rgba(45, 212, 191, 0.14);
+    --good: #2dd4bf;
+    --bad: #d98d80;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  h1, h2, h3 { font-family: "Avenir Next", "Futura", system-ui, sans-serif; text-wrap: balance; }
+  h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.01em; margin: 8px 0 10px; }
+  h2 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin: 0;
+  }
+  .lede { color: var(--muted); max-width: 62ch; margin: 0 0 20px; }
+  .lede b, .opt-sub b { color: var(--ink); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .chip {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+    border: 1px solid var(--line); border-radius: 99px; padding: 3px 11px;
+    color: var(--muted); background: var(--panel);
+  }
+
+  .section { margin-top: 56px; }
+  .opt-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .opt-tag {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+    color: var(--accent); background: var(--accent-soft);
+    border-radius: 6px; padding: 2px 9px; font-weight: 600;
+  }
+  .opt-sub { color: var(--muted); margin: 0 0 18px; max-width: 68ch; }
+
+  /* ---------- gesture table ---------- */
+  .gest-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.g { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; white-space: nowrap; color: var(--accent); }
+
+  /* ---------- mockup frame ---------- */
+  .mk {
+    position: relative; width: 100%; aspect-ratio: 16 / 8.6;
+    background:
+      radial-gradient(circle, #232a33 1px, transparent 1px) 0 0 / 22px 22px,
+      var(--mk-bg);
+    border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; font-size: 10px; color: var(--mk-ink);
+    box-shadow: 0 12px 32px rgba(10, 14, 20, 0.18);
+  }
+  .mk.zoomed {
+    background:
+      radial-gradient(circle, #242b34 1.5px, transparent 1.5px) 0 0 / 44px 44px,
+      var(--mk-bg);
+  }
+  .mk, .mk * { box-sizing: border-box; }
+  .mk-caption {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+    color: var(--muted); margin: 10px 2px 0;
+  }
+  .mk-caption b { color: var(--ink); font-weight: 600; }
+
+  /* image placeholder tiles */
+  .ph { border-radius: 4px; background: linear-gradient(135deg, #3d4657, #55483e); }
+  .ph.v1 { background: linear-gradient(135deg, #384258, #6b5340); }
+  .ph.v2 { background: linear-gradient(135deg, #2f4a4d, #52546e); }
+  .ph.v3 { background: linear-gradient(135deg, #4c3f52, #395263); }
+  .ph.v4 { background: linear-gradient(135deg, #46503c, #3c4a61); }
+  .ph.pend {
+    background: repeating-linear-gradient(45deg, #1f242c, #1f242c 6px, #232933 6px, #232933 12px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .spin {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #3a4450; border-top-color: var(--mk-accent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .spin { animation: rot 1s linear infinite; }
+    @keyframes rot { to { transform: rotate(360deg); } }
+  }
+
+  /* nodes on canvas */
+  .node {
+    position: absolute; width: 12.5%;
+    background: var(--mk-panel); border: 1px solid var(--mk-line);
+    border-radius: 7px; padding: 4px;
+  }
+  .node .ph { width: 100%; aspect-ratio: 16/10; }
+  .node .nlabel {
+    display: block; margin-top: 4px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 8.5px; color: var(--mk-muted); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .node.sel { border-color: var(--mk-accent); box-shadow: 0 0 0 2px var(--mk-accent-soft); }
+  .node.sel .nlabel { color: var(--mk-accent); }
+  .node.err { border-color: #a3564a; }
+  .node.err .nlabel { color: #d98d80; }
+  .edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .edges path { fill: none; stroke: #3a4450; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .opchip {
+    position: absolute; font-family: ui-monospace, Menlo, monospace; font-size: 8px;
+    background: var(--mk-bg2); border: 1px solid var(--mk-line); color: var(--mk-muted);
+    border-radius: 99px; padding: 1px 7px;
+  }
+  .opchip.det { color: #a3c188; border-color: #43503a; }
+
+  /* action menu attached to selected node */
+  .actmenu {
+    position: absolute; z-index: 3;
+    background: var(--mk-panel2); border: 1px solid var(--mk-line); border-radius: 7px;
+    display: flex; gap: 2px; padding: 3px;
+  }
+  .actmenu span {
+    font-size: 8.5px; padding: 2px 7px; border-radius: 4px; color: var(--mk-ink);
+    white-space: nowrap;
+  }
+  .actmenu span.on { background: var(--mk-accent); color: #0b2622; font-weight: 600; }
+  .actmenu span.det { color: #a3c188; }
+  .actmenu span i { font-style: normal; color: var(--mk-accent); }
+  .actmenu span.on i { color: #0b2622; }
+
+  /* three-beat loop strip */
+  .beats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .beats { grid-template-columns: 1fr; } }
+  .beat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .beat .bnum {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 6px;
+  }
+  .beat p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .beat p b { color: var(--ink); }
+
+  /* crop handles */
+  .cropbox {
+    position: absolute; border: 1.5px solid var(--mk-accent); border-radius: 2px;
+    box-shadow: 0 0 0 999px rgba(10, 13, 17, 0.55);
+  }
+  .cropbox i {
+    position: absolute; width: 6px; height: 6px; background: var(--mk-accent);
+    border-radius: 1px;
+  }
+  .cropbox i.tl { left: -3px; top: -3px; } .cropbox i.tr { right: -3px; top: -3px; }
+  .cropbox i.bl { left: -3px; bottom: -3px; } .cropbox i.br { right: -3px; bottom: -3px; }
+  .cropbox small {
+    position: absolute; top: -15px; left: 0; font-size: 8px; color: var(--mk-accent);
+    font-family: ui-monospace, Menlo, monospace; white-space: nowrap;
+  }
+  .node.pickable { border-style: dashed; border-color: #4a8f85; cursor: pointer; }
+  .reflink { stroke: var(--mk-accent) !important; stroke-dasharray: 5 4; }
+
+  /* generic mockup ui bits */
+  .mk-btn {
+    display: inline-block; border-radius: 5px; padding: 3px 10px;
+    background: var(--mk-panel2); border: 1px solid var(--mk-line); color: var(--mk-ink);
+    font-size: 9px;
+  }
+  .mk-btn.primary { background: var(--mk-accent); border-color: var(--mk-accent); color: #0b2622; font-weight: 600; }
+  .mk-btn.ghost { background: transparent; }
+  .mk-input {
+    background: var(--mk-bg2); border: 1px solid var(--mk-line); border-radius: 5px;
+    color: var(--mk-muted); padding: 4px 8px; font-size: 9px;
+  }
+  .mk-title {
+    position: absolute; top: 10px; left: 12px; font-size: 10px; color: var(--mk-muted);
+    font-family: ui-monospace, Menlo, monospace; z-index: 2;
+  }
+  .mk-title b { color: var(--mk-ink); }
+
+  .inspector {
+    position: absolute; top: 10px; right: 10px; bottom: 10px; width: 25%; z-index: 2;
+    background: var(--mk-panel); border: 1px solid var(--mk-line); border-radius: 8px;
+    padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .inspector .ph { width: 100%; aspect-ratio: 16/10; }
+  .ins-meta { font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; color: var(--mk-muted); }
+  .ins-meta b { color: var(--mk-ink); font-weight: 600; }
+  .tabrow { display: flex; gap: 3px; }
+  .tab {
+    flex: 1; text-align: center; font-size: 8.5px; padding: 3px 0;
+    border: 1px solid var(--mk-line); border-radius: 4px; color: var(--mk-muted);
+  }
+  .tab.on { background: var(--mk-accent-soft); border-color: var(--mk-accent); color: var(--mk-accent); }
+  .promptbar {
+    position: absolute; left: 12px; bottom: 12px; width: 44%; z-index: 2;
+    display: flex; gap: 6px; align-items: center;
+  }
+  .promptbar .mk-input { flex: 1; }
+  .minimap {
+    position: absolute; left: 12px; bottom: 46px; width: 74px; height: 44px; z-index: 2;
+    background: var(--mk-bg2); border: 1px solid var(--mk-line); border-radius: 4px;
+  }
+  .minimap i {
+    position: absolute; display: block; width: 8px; height: 5px; background: #46505d; border-radius: 1px;
+  }
+  .minimap i.hot { background: var(--mk-accent); }
+
+  .marquee {
+    position: absolute;
+    border: 1.5px dashed var(--mk-accent); background: var(--mk-accent-soft); border-radius: 2px;
+  }
+  .marquee small {
+    position: absolute; top: -14px; left: 0; font-size: 8px; color: var(--mk-accent);
+    font-family: ui-monospace, Menlo, monospace; white-space: nowrap;
+  }
+  .hintbar {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 2;
+    background: var(--mk-bg2); border: 1px solid var(--mk-line); border-radius: 99px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 8px; color: var(--mk-muted);
+    padding: 3px 12px; white-space: nowrap;
+  }
+  .hintbar b { color: var(--mk-accent); font-weight: 600; }
+
+  /* notes under mockups */
+  .notes { margin-top: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .notes h3 { font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--muted); }
+  .notes li { margin: 6px 0; }
+  .notes li b { color: var(--ink); font-weight: 600; }
+
+  .foot { margin-top: 56px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); font-size: 13.5px; max-width: 74ch; }
+  .foot b { color: var(--ink); }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">gen_media · chosen UX — Canvas-First</p>
+  <h1>The canvas is the app</h1>
+  <p class="lede">
+    Final direction. One continuous, zoomable space holding the whole exploration tree.
+    <b>Selecting a node reveals its actions</b>; precision gestures happen by zooming into the
+    node itself — the map's zoom is the magnifier. Every operation, generative or deterministic,
+    creates child nodes. Three states below show the complete loop.
+  </p>
+  <div class="chips">
+    <span class="chip">decided: Canvas-First</span>
+    <span class="chip">decided: zoom-to-edit regions</span>
+    <span class="chip">decided: flat tool menu, ✦ marks AI ops</span>
+    <span class="chip">decided: pick-a-node references</span>
+  </div>
+
+  <div class="section" id="gestures">
+    <h2>Gesture model</h2>
+    <p class="opt-sub">The full input vocabulary — small on purpose.</p>
+    <div class="gest-wrap">
+      <table>
+        <thead><tr><th>Gesture</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td class="g">click node</td><td>Select — action menu appears on the node, inspector opens with details + op controls</td></tr>
+          <tr><td class="g">drag node</td><td>Reposition it (positions persist)</td></tr>
+          <tr><td class="g">drag background / scroll</td><td>Pan / zoom the canvas (React Flow defaults, minimap bottom-left)</td></tr>
+          <tr><td class="g">double-click node</td><td>Zoom-to-fit that node — camera animates until the node fills most of the view</td></tr>
+          <tr><td class="g">drag on selected image <i>(region op armed)</i></td><td>Draw the inpaint / crop rectangle directly on the image; drag text to place it</td></tr>
+          <tr><td class="g">Esc</td><td>Disarm region op, else deselect</td></tr>
+          <tr><td class="g">type in bottom prompt bar</td><td>Generate a new <b>root</b> image (new tree on the open canvas); Upload button sits beside it</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section" id="beats">
+    <h2>One grammar, two tool families</h2>
+    <p class="opt-sub">
+      Every tool — AI or instant — runs the same three-beat loop. What differs is only the
+      middle beat and the wait. In the menu, <b>✦ marks a model call</b> (~seconds, returns
+      N variants); unmarked verbs are instant, free, and previewed live.
+    </p>
+    <div class="beats">
+      <div class="beat"><span class="bnum">1 · Arm</span>
+        <p>Pick a verb on the selected node: <b>✦ Edit · ✦ Inpaint · ✦ Variations · Crop · Resize · Text</b></p></div>
+      <div class="beat"><span class="bnum">2 · Configure on the image</span>
+        <p>AI: write the prompt, drag a region, attach a reference. Instant: drag crop handles or place text — <b>live preview</b>.</p></div>
+      <div class="beat"><span class="bnum">3 · Commit → child nodes</span>
+        <p>✦ Run creates N pending children that fill in as results land. Instant Apply creates one finished child <b>immediately</b>.</p></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ STATE A ══════════════════════ -->
+  <div class="section" id="stateA">
+    <div class="opt-head"><span class="opt-tag">State A</span><h2>Overview — select &amp; branch</h2></div>
+    <p class="opt-sub">
+      The resting state. v5 is selected: an action menu sprouts on the node and the inspector
+      shows its recipe (<b>every node stores the full operation that produced it</b>) plus the
+      controls to branch further.
+    </p>
+
+    <div class="mk" role="img" aria-label="Wireframe of canvas overview state">
+      <span class="mk-title"><b>gen_media</b> — canvas</span>
+
+      <svg class="edges" viewBox="0 0 1000 540" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M170 268 C 230 268, 200 128, 250 122"></path>
+        <path d="M170 268 C 230 268, 200 348, 250 342"></path>
+        <path d="M420 118 C 470 116, 450 86, 490 84"></path>
+        <path d="M420 342 C 470 340, 450 260, 490 258"></path>
+        <path d="M420 342 C 470 344, 450 428, 490 426"></path>
+      </svg>
+
+      <div class="node" style="left:4%; top:38%;">
+        <div class="ph"></div>
+        <span class="nlabel">v1 · generate · flux-pro</span>
+      </div>
+      <div class="node" style="left:25%; top:12%;">
+        <div class="ph v1"></div>
+        <span class="nlabel">v2 · edit “warmer dusk light”</span>
+      </div>
+      <div class="node" style="left:25%; top:53%;">
+        <div class="ph v2"></div>
+        <span class="nlabel">v3 · edit “rainy street”</span>
+      </div>
+      <div class="node" style="left:49%; top:6%;">
+        <div class="ph v1"></div>
+        <span class="nlabel">v4 · crop 4:5</span>
+      </div>
+      <div class="node sel" style="left:49%; top:38%;">
+        <div class="ph v3"></div>
+        <span class="nlabel">v5 · inpaint “neon sign”</span>
+      </div>
+      <div class="node" style="left:49%; top:69%;">
+        <div class="ph v4"></div>
+        <span class="nlabel">v6 · text overlay “OPEN LATE”</span>
+      </div>
+
+      <div class="actmenu" style="left:47%; top:30.5%;">
+        <span class="on"><i>✦</i> Edit</span><span><i>✦</i> Inpaint</span><span><i>✦</i> Vary</span><span class="det">Crop</span><span class="det">Resize</span><span class="det">Text</span>
+      </div>
+
+      <span class="opchip" style="left:19.5%; top:24%;">edit</span>
+      <span class="opchip" style="left:19.5%; top:56%;">edit</span>
+      <span class="opchip det" style="left:44%; top:15%;">crop</span>
+      <span class="opchip" style="left:44%; top:47%;">inpaint</span>
+      <span class="opchip det" style="left:44%; top:74%;">text</span>
+
+      <div class="inspector">
+        <div class="ph v3"></div>
+        <span class="ins-meta"><b>v5</b> · inpaint · flux-fill · 1344×840<br>recipe: “neon sign” on region of v3</span>
+        <div class="tabrow">
+          <span class="tab on">Edit</span><span class="tab">Inpaint</span><span class="tab">Crop</span><span class="tab">Text</span>
+        </div>
+        <div class="mk-input" style="height:30px;">make the sign text glow&hellip;</div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span class="mk-btn ghost" style="font-size:8.5px;">variants: 2</span>
+          <span class="mk-btn primary" style="margin-left:auto;">Run&nbsp;&rarr;</span>
+        </div>
+        <div style="display:flex; gap:4px; margin-top:auto;">
+          <span class="mk-btn ghost" style="font-size:8.5px;">Download</span>
+          <span class="mk-btn ghost" style="font-size:8.5px;">Retry op</span>
+        </div>
+      </div>
+
+      <div class="minimap"><i style="left:8px; top:18px;"></i><i style="left:24px; top:8px;"></i><i style="left:24px; top:28px;"></i><i class="hot" style="left:42px; top:18px;"></i></div>
+      <div class="promptbar">
+        <span class="mk-input" style="flex:1;">Describe a new image&hellip;</span>
+        <span class="mk-btn">Upload</span>
+        <span class="mk-btn primary">Generate</span>
+      </div>
+    </div>
+    <p class="mk-caption"><b>Shown:</b> v5 selected — action menu on the node, inspector with recipe + controls; green chips = deterministic ops; prompt bar spawns new roots.</p>
+  </div>
+
+  <!-- ══════════════════════ STATE B ══════════════════════ -->
+  <div class="section" id="stateB">
+    <div class="opt-head"><span class="opt-tag">State B</span><h2>Zoom-to-edit — precision on the map</h2></div>
+    <p class="opt-sub">
+      Double-click zoomed the camera into v5; Inpaint is armed. Now <b>dragging on the image
+      draws the region</b> — the background still pans, scroll still zooms. No mode, no modal:
+      just a map at street level. Region coordinates are captured in natural image pixels.
+    </p>
+
+    <div class="mk zoomed" role="img" aria-label="Wireframe of zoomed-in editing state">
+      <span class="mk-title"><b>gen_media</b> — canvas · zoom 240%</span>
+
+      <!-- neighbors cropped at edges to signal continuous space -->
+      <div class="node" style="left:-6%; top:8%; width:16%; opacity:0.55;">
+        <div class="ph v2"></div><span class="nlabel">v3</span>
+      </div>
+      <div class="node" style="left:-4%; top:66%; width:16%; opacity:0.55;">
+        <div class="ph v4"></div><span class="nlabel">v6</span>
+      </div>
+
+      <div class="node sel" style="left:16%; top:8%; width:46%; padding:7px; border-radius:10px;">
+        <div class="ph v3" style="aspect-ratio:16/10; position:relative;">
+          <div class="marquee" style="left:54%; top:16%; width:34%; height:32%;"><small>region · 512×380 px</small></div>
+        </div>
+        <span class="nlabel" style="font-size:10px; margin-top:6px;">v5 · inpaint “neon sign” · flux-fill</span>
+      </div>
+
+      <div class="actmenu" style="left:16%; top:3%;">
+        <span><i>✦</i> Edit</span><span class="on"><i>✦</i> Inpaint ▣</span><span><i>✦</i> Vary</span><span class="det">Crop</span><span class="det">Resize</span><span class="det">Text</span>
+      </div>
+
+      <div class="inspector" style="width:23%;">
+        <span class="ins-meta"><b>Inpaint v5</b> — only the region changes;<br>everything outside is untouched</span>
+        <div class="mk-input" style="height:38px;">swap the sign to hand-painted wood, warm bulbs&hellip;</div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span class="mk-btn ghost" style="font-size:8.5px;">variants: 3</span>
+          <span class="mk-btn primary" style="margin-left:auto;">Run&nbsp;&rarr;</span>
+        </div>
+        <span class="ins-meta" style="margin-top:auto; opacity:0.8;">creates 3 child nodes of v5</span>
+      </div>
+
+      <div class="hintbar"><b>drag image</b> draw region &nbsp;·&nbsp; <b>drag background</b> pan &nbsp;·&nbsp; <b>scroll</b> zoom &nbsp;·&nbsp; <b>Esc</b> disarm</div>
+    </div>
+    <p class="mk-caption"><b>Shown:</b> camera at 240% on v5, inpaint armed, region drawn on the image itself; neighbors visible at the edges — still one continuous canvas.</p>
+  </div>
+
+  <!-- ══════════════════════ STATE C: INSTANT CROP ══════════════════════ -->
+  <div class="section" id="stateC">
+    <div class="opt-head"><span class="opt-tag">State C</span><h2>Instant tool — crop with live preview</h2></div>
+    <p class="opt-sub">
+      Crop is armed on v4 (no ✦ — no model, no wait). Handles on the image, the discard area
+      dims live, and <b>Apply creates a finished child instantly</b>, client-side. The node works
+      immediately from a local copy while it syncs to the CDN in the background.
+    </p>
+
+    <div class="mk zoomed" role="img" aria-label="Wireframe of instant crop state">
+      <span class="mk-title"><b>gen_media</b> — canvas · zoom 210%</span>
+
+      <div class="node sel" style="left:20%; top:9%; width:44%; padding:7px; border-radius:10px;">
+        <div class="ph v1" style="aspect-ratio:16/10; position:relative;">
+          <div class="cropbox" style="left:22%; top:6%; width:52%; height:86%;">
+            <small>4:5 · 1080×1350</small>
+            <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
+          </div>
+        </div>
+        <span class="nlabel" style="font-size:10px; margin-top:6px;">v4 · crop target</span>
+      </div>
+
+      <div class="actmenu" style="left:20%; top:3.5%;">
+        <span><i>✦</i> Edit</span><span><i>✦</i> Inpaint</span><span><i>✦</i> Vary</span><span class="det on">Crop</span><span class="det">Resize</span><span class="det">Text</span>
+      </div>
+
+      <div class="inspector" style="width:23%;">
+        <span class="ins-meta"><b>Crop v4</b> — deterministic, instant, free</span>
+        <div style="display:flex; gap:4px; flex-wrap:wrap;">
+          <span class="mk-btn" style="font-size:8.5px; border-color:var(--mk-accent); color:var(--mk-accent);">4:5</span>
+          <span class="mk-btn ghost" style="font-size:8.5px;">1:1</span>
+          <span class="mk-btn ghost" style="font-size:8.5px;">16:9</span>
+          <span class="mk-btn ghost" style="font-size:8.5px;">free</span>
+        </div>
+        <span class="mk-btn primary" style="align-self:flex-start;">Apply — instant</span>
+        <span class="ins-meta" style="margin-top:auto; opacity:0.8;">creates 1 child of v4, no model call</span>
+      </div>
+
+      <div class="hintbar"><b>drag handles</b> adjust &nbsp;·&nbsp; <b>drag inside</b> move box &nbsp;·&nbsp; <b>Esc</b> cancel</div>
+    </div>
+    <p class="mk-caption"><b>Shown:</b> crop armed on v4 — live dimmed preview, aspect presets in the inspector, Apply commits with zero latency.</p>
+  </div>
+
+  <!-- ══════════════════════ STATE D: REFERENCE PICK ══════════════════════ -->
+  <div class="section" id="stateD">
+    <div class="opt-head"><span class="opt-tag">State D</span><h2>Reference pick — point at your own history</h2></div>
+    <p class="opt-sub">
+      Edit is armed on v5 and “+ Reference” entered pick mode: every other node becomes
+      pickable (dashed outline). Clicking v2 attaches it — <b>“edit v5, match the style of
+      v2”</b> — something a chat interface simply cannot express. The dashed link shows the
+      borrowed influence.
+    </p>
+
+    <div class="mk" role="img" aria-label="Wireframe of reference picking state">
+      <span class="mk-title"><b>gen_media</b> — canvas · pick a reference node</span>
+
+      <svg class="edges" viewBox="0 0 1000 540" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M170 268 C 230 268, 200 128, 250 122"></path>
+        <path d="M170 268 C 230 268, 200 348, 250 342"></path>
+        <path d="M420 342 C 470 340, 450 260, 490 258"></path>
+        <path class="reflink" d="M420 100 C 520 110, 480 210, 520 240"></path>
+      </svg>
+
+      <div class="node" style="left:4%; top:38%;">
+        <div class="ph"></div>
+        <span class="nlabel">v1 · generate · flux-pro</span>
+      </div>
+      <div class="node pickable" style="left:25%; top:12%;">
+        <div class="ph v1"></div>
+        <span class="nlabel">v2 ← picked as reference</span>
+      </div>
+      <div class="node pickable" style="left:25%; top:53%;">
+        <div class="ph v2"></div>
+        <span class="nlabel">v3 · edit “rainy street”</span>
+      </div>
+      <div class="node sel" style="left:49%; top:38%;">
+        <div class="ph v3"></div>
+        <span class="nlabel">v5 · editing…</span>
+      </div>
+
+      <div class="inspector">
+        <span class="ins-meta"><b>✦ Edit v5</b> · nano-banana</span>
+        <div class="mk-input" style="height:30px;">apply this lighting style to the whole scene</div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span class="mk-btn" style="font-size:8.5px; border-color:var(--mk-accent); color:var(--mk-accent);">ref: v2 ✕</span>
+          <span class="mk-btn ghost" style="font-size:8.5px;">+ Reference</span>
+        </div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span class="mk-btn ghost" style="font-size:8.5px;">variants: 2</span>
+          <span class="mk-btn primary" style="margin-left:auto;">Run&nbsp;&rarr;</span>
+        </div>
+        <span class="ins-meta" style="margin-top:auto; opacity:0.8;">op stores referenceNodeId — provenance intact</span>
+      </div>
+
+      <div class="hintbar"><b>click a dashed node</b> attach reference &nbsp;·&nbsp; <b>Esc</b> cancel pick</div>
+    </div>
+    <p class="mk-caption"><b>Shown:</b> pick mode from the Edit panel — v2 chosen as style reference for editing v5; dashed teal link marks the influence.</p>
+  </div>
+
+  <!-- ══════════════════════ STATE E ══════════════════════ -->
+  <div class="section" id="stateE">
+    <div class="opt-head"><span class="opt-tag">State E</span><h2>Variants in flight — pending nodes are real nodes</h2></div>
+    <p class="opt-sub">
+      The Run above fired 3 variants: three children of v5 appeared instantly as pending nodes
+      and fill in as each model call returns. One already finished, one failed with a retry.
+      <b>Iteration is cheap because results land side by side</b> — keep the winner, branch again.
+    </p>
+
+    <div class="mk" role="img" aria-label="Wireframe of variants generating state">
+      <span class="mk-title"><b>gen_media</b> — canvas</span>
+
+      <svg class="edges" viewBox="0 0 1000 540" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M300 270 C 360 270, 330 100, 390 96"></path>
+        <path d="M300 270 C 360 270, 330 270, 390 268"></path>
+        <path d="M300 270 C 360 270, 330 440, 390 436"></path>
+      </svg>
+
+      <div class="node sel" style="left:14%; top:38%;">
+        <div class="ph v3"></div>
+        <span class="nlabel">v5 · inpaint “neon sign”</span>
+      </div>
+
+      <div class="node" style="left:39%; top:6%;">
+        <div class="ph v1"></div>
+        <span class="nlabel">v7 · inpaint “wood sign” ✓ 4.2s</span>
+      </div>
+      <div class="node" style="left:39%; top:38%;">
+        <div class="ph pend"><span class="spin"></span></div>
+        <span class="nlabel">v8 · generating&hellip; flux-fill</span>
+      </div>
+      <div class="node err" style="left:39%; top:70%;">
+        <div class="ph pend" style="background:#241d1c;"><span style="font-size:11px; color:#d98d80;">⚠</span></div>
+        <span class="nlabel">v9 · rate-limited · Retry</span>
+      </div>
+
+      <span class="opchip" style="left:33.5%; top:16%;">inpaint</span>
+      <span class="opchip" style="left:33.5%; top:47%;">inpaint</span>
+      <span class="opchip" style="left:33.5%; top:78%;">inpaint</span>
+
+      <div class="minimap"><i style="left:8px; top:18px;"></i><i class="hot" style="left:24px; top:8px;"></i><i style="left:24px; top:18px;"></i><i style="left:24px; top:28px;"></i></div>
+      <div class="promptbar">
+        <span class="mk-input" style="flex:1;">Describe a new image&hellip;</span>
+        <span class="mk-btn">Upload</span>
+        <span class="mk-btn primary">Generate</span>
+      </div>
+    </div>
+    <p class="mk-caption"><b>Shown:</b> three pending siblings from one Run — v7 done, v8 still generating, v9 errored with retry. Deterministic ops (crop/text) would appear instantly.</p>
+
+    <div class="notes">
+      <h3>Why this state matters</h3>
+      <ul>
+        <li><b>The answer to whack-a-mole is structural:</b> imprecise models become tolerable when every attempt is a cheap, comparable, discardable branch — and inpaint guarantees pixels outside the region never change.</li>
+        <li><b>Nothing blocks:</b> while v8 generates you can select v7, zoom in, and keep working. Ops are fire-and-forget.</li>
+        <li><b>Errors are nodes too</b> — the failed op keeps its recipe, so Retry is one click, and the tree honestly records what you tried.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="foot">
+    <b>Considered and set aside:</b> Studio Split (big stage + tree sidebar) — precision was
+    great but it demoted the branching tree to a layers panel; Map &amp; Focus (canvas + full-screen
+    focus mode) — solved both, but zoom-to-edit achieves the same inside one continuous space
+    with no mode switch. Canvas-First with zoom-to-edit is the chosen direction.
+  </p>
+</div>
