@@ -136,6 +136,15 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
     return resizeBox(shape, info)
   }
 
+  // Polish (Task 12): double-click a node to frame it. `this.editor` is set
+  // by the base ShapeUtil constructor — no hook needed since this runs
+  // outside React's render (a tldraw pointer-event callback), unlike
+  // `component()` below.
+  override onDoubleClick(shape: ImageNodeShape) {
+    const bounds = this.editor.getShapePageBounds(shape.id)
+    if (bounds) this.editor.zoomToBounds(bounds, { animation: { duration: 220 } })
+  }
+
   override component(shape: ImageNodeShape) {
     // Delegates to a real function component: eslint's rules-of-hooks
     // statically forbids hook calls inside a class method even though tldraw
@@ -158,17 +167,25 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
   )
   const showCropOverlay = isSelected && armedTool === 'crop' && p.status === 'done'
   const showRegionOverlay = isSelected && armedTool === 'inpaint' && p.status === 'done'
+  const pickingRef = useUiStore((s) => s.pickingRef)
+  // Reference pick mode (Task 12): a node is a valid pick target while
+  // Inspector's "+ Reference" flow is armed if it's done and isn't the node
+  // currently selected (that's always the edit target itself — see
+  // Inspector.tsx's selId-reset/pick-detection effect for why only one
+  // shape is ever selected during a pick).
+  const pickable = pickingRef && p.status === 'done' && !isSelected
   return (
     <HTMLContainer
       style={{
         width: p.w,
         height: p.h,
         background: '#1e232b',
-        border: '1px solid #2d3540',
+        border: pickable ? '1px dashed #2dd4bf' : '1px solid #2d3540',
         borderRadius: 7,
         padding: 4,
         display: 'flex',
         flexDirection: 'column',
+        cursor: pickable ? 'crosshair' : undefined,
       }}
     >
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>

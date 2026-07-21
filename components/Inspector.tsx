@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { useEditor, useValue } from 'tldraw'
+import { useEditor, useValue, type TLShapeId } from 'tldraw'
 import { useUiStore } from '@/lib/ui-store'
 import { runOp, runInstantOp } from '@/lib/run-op'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
@@ -87,7 +87,11 @@ const EDIT_MODELS = [
 
 const panel: CSSProperties = {
   position: 'absolute',
-  top: 12,
+  // 48 (not 12) leaves room for CanvasApp's top-right Export/Import bar,
+  // which is always mounted at top:12 regardless of selection — this panel
+  // only mounts when a node is selected, so if both used top:12 they'd
+  // overlap whenever a node is selected (the common case).
+  top: 48,
   right: 12,
   zIndex: 300,
   width: 260,
@@ -142,13 +146,14 @@ const formSection: CSSProperties = {
 
 export function Inspector() {
   const editor = useEditor()
-  const { armedTool, setArmedTool, cropFrac, setCropFrac } = useUiStore()
+  const { armedTool, setArmedTool, cropFrac, setCropFrac, pickingRef, setPickingRef } = useUiStore()
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<string>(EDIT_MODELS[0].id)
   const [variants, setVariants] = useState(1)
   const [preset, setPreset] = useState<string>('free')
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
+  const [refId, setRefId] = useState<TLShapeId | null>(null)
 
   const sel = useValue(
     'inspector-sel',
@@ -163,15 +168,54 @@ export function Inspector() {
   // Reset form state when selection changes — including the crop rect, so a
   // stale rect drawn on a previously-selected node doesn't ghost onto the
   // next one (cropFrac is global ui-store state, not per-shape).
+  //
+  // Reference-pick interplay (Task 12): the pick flow *also* changes
+  // selection twice in a row — once to the picked node (so the user can
+  // click it), then back to the original edit target (so the form doesn't
+  // visually jump to a different node's context) — and this effect's own
+  // job is to fire exactly on that kind of change. Two refs coordinate the
+  // two flows so they don't fight:
+  //  - `editTargetIdRef` remembers which node "+ Reference" was clicked on,
+  //    so the pick-detection branch below knows what counts as "a different
+  //    node got picked" vs. "selection returned to where it started".
+  //  - `skipNextResetRef` is armed by the pick-detection branch the instant
+  //    it calls `editor.select(targetId)` to restore selection, so the
+  //    *next* run of this effect (fired by that very selId change back to
+  //    the target) is swallowed instead of wiping the prompt/model/variants
+  //    the user had already typed. Without it, "pick a ref" would silently
+  //    clear the edit form the user was filling in — selId changes A->B
+  //    (picked) are already skipped outright by the `if (pickingRef)`
+  //    early-return below, but the second change B->A (restore) happens
+  //    *after* pickingRef has already flipped back to false, so the
+  //    early-return can't catch it; skipNextResetRef is what does.
   const selId = sel?.id ?? null
+  const editTargetIdRef = useRef<TLShapeId | null>(null)
+  const skipNextResetRef = useRef(false)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (pickingRef) {
+      // While armed, ignore all selection churn for reset purposes — the
+      // only thing that matters here is detecting the pick itself: the
+      // next *different*, done image-node that becomes selected.
+      const targetId = editTargetIdRef.current
+      if (sel && targetId && sel.id !== targetId && sel.props.status === 'done') {
+        setRefId(sel.id)
+        skipNextResetRef.current = true
+        setPickingRef(false)
+        editor.select(targetId)
+      }
+      return
+    }
+    if (skipNextResetRef.current) {
+      skipNextResetRef.current = false
+      return
+    }
     setPrompt('')
     setModel(EDIT_MODELS[0].id)
     setVariants(1)
     setPreset('free')
     setCropFrac(null)
-  }, [selId, setCropFrac])
+    setRefId(null)
+  }, [selId, pickingRef, sel, editor, setCropFrac, setPickingRef])
 
   // Clear the drawn region rect and any in-progress prompt on EVERY armedTool
   // change (tracked via a ref so re-renders that leave armedTool unchanged —
@@ -186,6 +230,7 @@ export function Inspector() {
     if (armedTool !== prevArmedToolRef.current) {
       setCropFrac(null)
       setPrompt('')
+      setRefId(null) // ref chip is edit-specific ephemeral state, same as prompt
     }
     prevArmedToolRef.current = armedTool
   }, [armedTool, setCropFrac])
@@ -231,12 +276,37 @@ export function Inspector() {
   const opModel = 'model' in op ? op.model : undefined
   const opPrompt = 'prompt' in op ? op.prompt : undefined
 
+  // Arms pick mode: remembers which node this pick is *for* (so the
+  // pick-detection effect above can tell "a new node got picked" apart from
+  // "selection returned to where it started") and hands off to Inspector's
+  // selId effect to do the actual detecting.
+  const startPick = () => {
+    editTargetIdRef.current = sel.id
+    setPickingRef(true)
+  }
+
+  const resolveRef = (id: string) => {
+    const s = editor.getShape(id as TLShapeId)
+    return s && s.type === 'image-node' ? s.props.assetUrl : undefined
+  }
+
+  const refNode = refId ? editor.getShape(refId) : undefined
+  const refSeq = refNode && refNode.type === 'image-node' ? refNode.props.seq : undefined
+
   const runEdit = () => {
     if (!prompt.trim()) return
-    runOp(editor, sel.id, { type: 'edit', prompt, model }, variants)
+    runOp(
+      editor,
+      sel.id,
+      { type: 'edit', prompt, model, referenceNodeId: refId ?? undefined },
+      variants,
+      resolveRef,
+      refId ?? undefined
+    )
     setArmedTool(null)
     setPrompt('')
     setVariants(1)
+    setRefId(null)
   }
 
   const pickPreset = (name: string, ratio: number | null) => {
@@ -331,20 +401,52 @@ export function Inspector() {
               +
             </button>
           </div>
-          <button
-            disabled
-            title="reference picking arrives in a later task"
-            style={{
-              background: 'transparent',
-              color: '#5b6472',
-              border: '1px solid #2d3540',
-              borderRadius: 6,
-              padding: '6px 8px',
-              cursor: 'not-allowed',
-            }}
-          >
-            + Reference
-          </button>
+          {refId ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span
+                style={{
+                  background: '#0f1216',
+                  color: '#2dd4bf',
+                  border: '1px solid #2dd4bf',
+                  borderRadius: 6,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                }}
+              >
+                ref: v{refSeq ?? '?'}
+              </span>
+              <button
+                onClick={() => setRefId(null)}
+                title="remove reference"
+                style={{
+                  background: 'transparent',
+                  color: '#8a95a3',
+                  border: '1px solid #2d3540',
+                  borderRadius: 4,
+                  width: 22,
+                  height: 22,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={startPick}
+              title={pickingRef ? 'click a done node on the canvas to attach it as a reference' : 'attach another node as a reference image'}
+              style={{
+                background: pickingRef ? '#2dd4bf' : 'transparent',
+                color: pickingRef ? '#0b2622' : '#dfe5ec',
+                border: '1px solid #2d3540',
+                borderRadius: 6,
+                padding: '6px 8px',
+                cursor: 'pointer',
+              }}
+            >
+              {pickingRef ? 'Pick a node…' : '+ Reference'}
+            </button>
+          )}
           <button
             onClick={runEdit}
             style={{

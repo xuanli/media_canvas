@@ -42,7 +42,13 @@ export function runOp(
   sourceId: TLShapeId | null,
   op: Operation,
   variants = 1,
-  resolveRef: (id: string) => string | undefined = () => undefined
+  resolveRef: (id: string) => string | undefined = () => undefined,
+  // Task 12: when set, every child created by this call gets a second,
+  // DASHED 'ref' arrow from this node (the picked reference) in addition to
+  // the normal solid parent->child arrow. Optional and defaulted so every
+  // pre-Task-12 call site (PromptBar's generate, ActionMenu's vary, the
+  // non-reference edit path) keeps compiling unchanged.
+  refFromId?: TLShapeId
 ): void {
   const all = nodes(editor)
   const parent = sourceId ? all.find((s) => s.id === sourceId) : undefined
@@ -80,6 +86,7 @@ export function runOp(
       },
     })
     if (parent) createArrow(editor, parent.id, id, op.type)
+    if (refFromId) createArrow(editor, refFromId, id, 'ref', /* dashed */ true)
     void dispatch(editor, id, op, parent?.props.assetUrl, resolveRef)
   }
 }
