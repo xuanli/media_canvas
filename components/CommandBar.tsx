@@ -20,7 +20,7 @@
 // before the hooks — hooks must stay unconditional either way, so this is
 // not actually a behavior change, just carried forward faithfully.
 
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent } from 'react'
 import { useEditor, useValue, type TLShapeId } from 'tldraw'
 import { useUiStore } from '@/lib/ui-store'
 import { runOp, runInstantOp, createUploadedRoot } from '@/lib/run-op'
@@ -184,6 +184,10 @@ export function CommandBar() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
+  // Task 15A: click-to-edit node name on the SELECTED recipe line.
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+
   const sel = useValue(
     'cmdbar-sel',
     () => {
@@ -232,6 +236,7 @@ export function CommandBar() {
       setPreset('free')
       setCropFrac(null)
       setRefId(null)
+      setEditingName(false)
     }
     prevSelIdRef.current = selId
   }, [selId, pickingRef, sel, editor, setCropFrac, setPickingRef])
@@ -380,6 +385,37 @@ export function CommandBar() {
     setPickingRef(true)
   }
 
+  // Task 15A: rename is a normal (undoable) update — unlike the
+  // history:'ignore' status transitions in run-op.ts's dispatch(), a rename
+  // is a direct user edit, not an async settle of something already on the
+  // undo stack, so it belongs on the stack like any other prop edit.
+  const startEditName = () => {
+    setNameDraft(sel.props.name ?? '')
+    setEditingName(true)
+  }
+
+  const commitName = () => {
+    editor.updateShape<ImageNodeShape>({ id: sel.id, type: 'image-node', props: { name: nameDraft.trim() } })
+    setEditingName(false)
+  }
+
+  const cancelEditName = () => {
+    setEditingName(false)
+  }
+
+  const onNameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // stopPropagation so Enter/Escape here don't also reach
+    // CanvasApp.tsx's global Escape listener (which would disarm/deselect —
+    // the brief is explicit this edit must not bubble into that layering).
+    if (e.key === 'Enter') {
+      e.stopPropagation()
+      commitName()
+    } else if (e.key === 'Escape') {
+      e.stopPropagation()
+      cancelEditName()
+    }
+  }
+
   const resolveRef = (id: string) => {
     const s = editor.getShape(id as TLShapeId)
     return s && s.type === 'image-node' ? s.props.assetUrl : undefined
@@ -486,6 +522,25 @@ export function CommandBar() {
       {!armedTool && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#8a95a3' }}>
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={onNameKeyDown}
+                onBlur={cancelEditName}
+                placeholder="name this node…"
+                style={{ ...field, padding: '3px 6px', fontSize: 11, width: 140 }}
+              />
+            ) : (
+              <span
+                onClick={startEditName}
+                title="click to rename"
+                style={{ color: p.name ? '#dfe5ec' : '#5b6472', fontStyle: p.name ? 'normal' : 'italic', cursor: 'text' }}
+              >
+                {p.name || 'unnamed'}
+              </span>
+            )}
             <span>
               v{p.seq} · {op.type}
               {opModel ? ` · ${opModel}` : ''} · {p.naturalW}×{p.naturalH}

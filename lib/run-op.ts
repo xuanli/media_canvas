@@ -19,6 +19,22 @@ import { IMAGE_NODE_W } from '@/components/ImageNodeShape'
 const nodes = (editor: Editor) =>
   editor.getCurrentPageShapes().filter((s): s is ImageNodeShape => s.type === 'image-node')
 
+// Task 15A name defaults (brief: "generate → first ≤4 words of prompt
+// (trimmed, no trailing punctuation); upload → filename sans extension;
+// edit/vary/inpaint/crop/resize children → parent's name"). Children copy at
+// creation time (a plain string snapshot, not a live reference) — a later
+// rename of the parent does not retroactively rename existing children,
+// matching how every other node field is a point-in-time recipe capture.
+function nameFromPrompt(prompt: string): string {
+  const words = prompt.trim().split(/\s+/).filter(Boolean).slice(0, 4)
+  return words.join(' ').replace(/[.,!?;:]+$/, '')
+}
+
+function nameFromFilename(filename: string): string {
+  const dot = filename.lastIndexOf('.')
+  return dot > 0 ? filename.slice(0, dot) : filename
+}
+
 export function createArrow(
   editor: Editor,
   from: TLShapeId,
@@ -64,6 +80,11 @@ export function runOp(
         occupiedBoxes
       )
   let seq = nextSeq(all.map((s) => s.props.seq))
+  // Root-only (no parent): only `generate` ever creates a root through this
+  // function (sourceId=null) — CommandBar's IDLE go(). edit/inpaint/vary
+  // always pass a selected node's id as sourceId, so the `op.type ===
+  // 'generate'` narrowing below is exhaustive in practice, not just a guess.
+  const rootName = op.type === 'generate' ? nameFromPrompt(op.prompt) : ''
   for (let i = 0; i < variants; i++) {
     const id = createShapeId()
     editor.createShape<ImageNodeShape>({
@@ -83,6 +104,7 @@ export function runOp(
         sourceId: sourceId,
         op,
         createdAt: Date.now(),
+        name: parent ? (parent.props.name ?? '') : rootName,
       },
     })
     if (parent) createArrow(editor, parent.id, id, op.type)
@@ -140,6 +162,7 @@ export async function runInstantOp(
       sourceId,
       op,
       createdAt: Date.now(),
+      name: parent.props.name ?? '',
     },
   })
   createArrow(editor, parent.id, id, op.type)
@@ -192,6 +215,7 @@ export function createUploadedRoot(editor: Editor, url: string, filename: string
           sourceId: null,
           op: { type: 'upload', filename },
           createdAt: Date.now(),
+          name: nameFromFilename(filename),
         },
       })
       resolve()

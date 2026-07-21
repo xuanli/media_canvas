@@ -95,6 +95,15 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
     assetUrl: T.string,
     naturalW: T.number,
     naturalH: T.number,
+    // Task 15A: optional, not T.string — see lib/types.ts's VersionNodeProps.name
+    // comment. Snapshots saved before this task lack the key entirely;
+    // T.string.optional() accepts that (undefined), whereas a plain T.string
+    // would reject the whole record on load since tldraw's validators check
+    // required props are present. Verified against the installed
+    // @tldraw/validate ObjectValidator: `.optional()` wraps the check so a
+    // missing key passes and an undefined value passes, but a present
+    // non-string value still fails — safety over elegance, per the brief.
+    name: T.string.optional(),
     durationMs: T.number.optional(),
     sourceId: T.string.nullable(),
     // zod validates ops at the API boundary; shape-level prop validation stays
@@ -118,6 +127,7 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
       sourceId: null,
       op: { type: 'generate', prompt: '', model: '' },
       createdAt: 0,
+      name: '',
     }
   }
 
@@ -259,19 +269,38 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         {showCropOverlay && <CropOverlay />}
         {showRegionOverlay && <RegionOverlay />}
       </div>
-      <div
-        style={{
-          fontFamily: 'ui-monospace, monospace',
-          fontSize: 9,
-          color: '#8a95a3',
-          padding: '3px 2px 0',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        v{p.seq} · {p.op.type}
-        {'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}
+      <div style={{ padding: '3px 2px 0' }}>
+        {/* Task 15A: primary line is the user-facing name; secondary is the
+            provenance recipe (was the whole label pre-15A). Falls back to
+            the old full label when name is '' or undefined (old snapshots,
+            or — shouldn't happen given run-op.ts's creation-site defaults —
+            an explicitly blanked name), so nothing goes visually empty. */}
+        <div
+          style={{
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: 9,
+            color: '#dfe5ec',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {p.name && p.name.trim()
+            ? p.name
+            : `v${p.seq} · ${p.op.type}${'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}`}
+        </div>
+        <div
+          style={{
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: 8,
+            color: '#5b6472',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          v{p.seq} · {p.op.type}
+        </div>
       </div>
     </HTMLContainer>
   )

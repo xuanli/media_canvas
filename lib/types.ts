@@ -18,6 +18,14 @@ export type Operation =
 export interface VersionNodeProps {
   w: number; h: number                  // on-canvas display size
   seq: number
+  // Task 15A: user-facing node name, editable from CommandBar's SELECTED
+  // recipe line. Optional at the shape-prop-validator level (T.string.optional()
+  // in ImageNodeShape.tsx) so snapshots saved before this field existed still
+  // load — tldraw's validators reject a record missing a NON-optional prop,
+  // but happily accept a genuinely-absent optional one. Treated as '' at
+  // every read site (falls back to the old v{seq}·{op.type} label in the
+  // node chip and to "unnamed" in the recipe line).
+  name?: string
   status: 'pending' | 'done' | 'error'
   kind: 'image' | 'video'
   assetUrl: string                      // '' → dataURL → CDN URL

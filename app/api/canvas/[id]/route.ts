@@ -1,4 +1,4 @@
-import { put, head } from '@vercel/blob'
+import { put, head, del } from '@vercel/blob'
 import { checkPasscode } from '@/lib/server-auth'
 
 const key = (id: string) => `canvases/${id}.json`
@@ -36,5 +36,25 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     return Response.json({ ok: true })
   }
   await put(key(id), body, { access: 'public', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' })
+  return Response.json({ ok: true })
+}
+
+// Task 15A: canvas delete (switcher's ✕ row action). `del()` (verified
+// signature: `del(urlOrPathname: string[] | string, options?): Promise<void>`
+// in the installed @vercel/blob's dist/index.d.ts) doesn't error on an
+// already-absent pathname — same idempotent-delete semantics as the blob
+// store's S3-like backing — so this always resolves to {ok:true} once
+// auth/id validation pass, real store or mock alike; the client (TopNav)
+// separately treats a 404 as a successful delete for defense in depth.
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  if (!valid(id)) return new Response('bad id', { status: 400 })
+  if (!checkPasscode(req))
+    return Response.json({ error: { code: 'unauthorized', message: 'Wrong passcode.' } }, { status: 401 })
+  if (mock()) {
+    mem.delete(id)
+    return Response.json({ ok: true })
+  }
+  await del(key(id))
   return Response.json({ ok: true })
 }

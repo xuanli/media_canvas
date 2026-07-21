@@ -5,11 +5,28 @@
 // wordmark · recent-canvas switcher (client-side, localStorage) · New ·
 // Share-link · Export (JSON export/import, now moved here from CanvasApp's
 // old top-right corner buttons, + PNG of the selected node) · save-state dot.
+//
+// Task 15A (user feedback 2026-07-21): reordered per user #1 ("New canvas"
+// moves next to the switcher) — left cluster is now wordmark · canvas name
+// (click-to-edit) · switcher ▾ · + New, right cluster stays Share · Export ▾
+// · save dot. Canvas name is stored in the tldraw document record (see
+// commitCanvasName below) so it travels in the snapshot/share link. Switcher
+// rows gained a delete ✕ (confirm -> DELETE /api/canvas/:id -> remove from
+// recents -> if it was the current canvas, navigate home).
 
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getSnapshot, loadSnapshot, useEditor, useValue } from 'tldraw'
-import { apiPost } from '@/lib/api-client'
+import { apiPost, apiDelete } from '@/lib/api-client'
 import { useUiStore } from '@/lib/ui-store'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
@@ -47,6 +64,15 @@ function upsertRecent(id: string, label: string): RecentEntry[] {
   return capped
 }
 
+// Task 15A: the only writer of a removal from `gm-recent` (delete flow).
+function removeRecentEntry(id: string): RecentEntry[] {
+  const list = loadRecent().filter((e) => e.id !== id)
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+  }
+  return list
+}
+
 const navBar: CSSProperties = {
   position: 'absolute',
   top: 0,
@@ -77,6 +103,17 @@ const navBtn: CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const navInput: CSSProperties = {
+  background: '#0f1216',
+  color: '#dfe5ec',
+  border: '1px solid #2dd4bf',
+  borderRadius: 5,
+  padding: '3px 6px',
+  fontSize: 11,
+  fontFamily: 'inherit',
+  width: 160,
+}
+
 const dropdown: CSSProperties = {
   position: 'absolute',
   top: 32,
@@ -87,8 +124,25 @@ const dropdown: CSSProperties = {
   padding: 4,
   display: 'flex',
   flexDirection: 'column',
-  minWidth: 160,
+  minWidth: 200,
   boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+}
+
+const dropdownRowBtn: CSSProperties = {
+  background: 'transparent',
+  color: '#dfe5ec',
+  border: 0,
+  borderRadius: 4,
+  padding: '6px 8px',
+  fontSize: 11,
+  textAlign: 'left',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  flex: 1,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const dropdownItem: CSSProperties = {
@@ -101,6 +155,32 @@ const dropdownItem: CSSProperties = {
   textAlign: 'left',
   cursor: 'pointer',
   fontFamily: 'inherit',
+}
+
+const dropdownDeleteBtn: CSSProperties = {
+  background: 'transparent',
+  color: '#8a95a3',
+  border: 0,
+  borderRadius: 4,
+  width: 20,
+  height: 20,
+  cursor: 'pointer',
+  fontSize: 11,
+  flexShrink: 0,
+}
+
+// Task 15A wordmark (user #4): a small "2 nodes + edge" motif echoing the
+// canvas's own node/arrow language, 16px, decorative (aria-hidden — the
+// adjacent "gen media" text carries the accessible name via the parent
+// link).
+function WordmarkGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+      <line x1="4" y1="12" x2="12" y2="4" stroke="#2dd4bf" strokeWidth="1.5" />
+      <circle cx="4" cy="12" r="2.5" fill="#181c22" stroke="#2dd4bf" strokeWidth="1.5" />
+      <circle cx="12" cy="4" r="2.5" fill="#2dd4bf" />
+    </svg>
+  )
 }
 
 export function TopNav({ canvasId }: { canvasId: string }) {
@@ -118,11 +198,26 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Recent-canvas list (hard rule): id + label from the first root node's
-  // prompt if present, else id + timestamp. `useValue` tracks the first root
-  // reactively (createdAt-earliest node with sourceId===null) so the label
-  // upgrades from "just the id" to the real prompt the moment generate/
-  // upload's optimistic node lands, without a manual re-check.
+  // Task 15A: canvas name click-to-edit state.
+  const [editingCanvasName, setEditingCanvasName] = useState(false)
+  const [canvasNameDraft, setCanvasNameDraft] = useState('')
+
+  // Task 15A: canvas name lives in the tldraw document record (verified in
+  // the installed @tldraw/editor 5.2.5: `editor.getDocumentSettings():
+  // TLDocument` / `editor.updateDocumentSettings(partial)`, backed by a real
+  // store record with scope 'document' — so it serializes into
+  // getSnapshot() output and travels with the share link, and
+  // save-sync.ts's `store.listen({ scope: 'document', source: 'user' })`
+  // already picks up changes to it for autosave with no changes needed
+  // there). Default is '' (tlschema's DocumentRecordType default).
+  const canvasName = useValue('topnav-canvas-name', () => editor.getDocumentSettings().name, [editor])
+
+  // Recent-canvas list (hard rule): label = canvas name when non-empty, else
+  // the first root node's prompt, else the id. `useValue` tracks the first
+  // root reactively (createdAt-earliest node with sourceId===null) so the
+  // label upgrades from "just the id" to the real prompt the moment
+  // generate/upload's optimistic node lands, without a manual re-check; the
+  // canvasName value tracked above does the same for renames.
   const rootPrompt = useValue(
     'topnav-root-prompt',
     () => {
@@ -140,14 +235,13 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   // This effect *is* the mount/update hook into localStorage (an external
   // system), not a pure state mirror of React state — same precedent as the
   // pick-detection effect in the old Inspector.tsx. It fires once on mount
-  // and again whenever the reactive `rootPrompt` (read from the tldraw
-  // store) resolves from null to the canvas' actual first-root prompt, which
-  // is exactly "updated on canvas mount" per the brief plus the one-time
-  // upgrade from an id-only label to the real one.
+  // and again whenever canvasName or the reactive rootPrompt resolve to a
+  // better label — exactly "refresh on mount and on rename" per the brief.
   useEffect(() => {
+    const label = canvasName && canvasName.trim() ? canvasName : (rootPrompt ?? canvasId)
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRecent(upsertRecent(canvasId, (rootPrompt ?? canvasId).slice(0, 40)))
-  }, [canvasId, rootPrompt])
+    setRecent(upsertRecent(canvasId, label.slice(0, 40)))
+  }, [canvasId, rootPrompt, canvasName])
 
   useEffect(() => {
     return () => {
@@ -155,8 +249,6 @@ export function TopNav({ canvasId }: { canvasId: string }) {
       if (shareTimerRef.current) clearTimeout(shareTimerRef.current)
     }
   }, [])
-
-  const currentLabel = recent.find((e) => e.id === canvasId)?.label ?? canvasId
 
   const onNewCanvas = async () => {
     setCreating(true)
@@ -228,6 +320,47 @@ export function TopNav({ canvasId }: { canvasId: string }) {
     setExportOpen(false)
   }
 
+  // Task 15A: canvas rename handlers — same Enter-commits/Esc-cancels
+  // contract as CommandBar's node rename, undoable-by-default is moot here
+  // (updateDocumentSettings runs with history:'ignore' internally per the
+  // installed Editor.ts — a global-settings write, not a shape edit).
+  const startEditCanvasName = () => {
+    setCanvasNameDraft(canvasName ?? '')
+    setEditingCanvasName(true)
+  }
+
+  const commitCanvasName = () => {
+    editor.updateDocumentSettings({ name: canvasNameDraft.trim() })
+    setEditingCanvasName(false)
+  }
+
+  const cancelEditCanvasName = () => setEditingCanvasName(false)
+
+  const onCanvasNameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.stopPropagation()
+      commitCanvasName()
+    } else if (e.key === 'Escape') {
+      e.stopPropagation()
+      cancelEditCanvasName()
+    }
+  }
+
+  // Task 15A: delete a canvas from the switcher dropdown. `e.stopPropagation()`
+  // keeps the click off the row's own switch-canvas button underneath it.
+  const onDeleteCanvas = async (id: string, e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    if (!window.confirm('Delete this canvas? The link will stop working.')) return
+    try {
+      await apiDelete(`/api/canvas/${id}`) // resolves for both real deletes and an already-gone 404
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Delete failed.')
+      return
+    }
+    setRecent(removeRecentEntry(id))
+    if (id === canvasId) router.push('/')
+  }
+
   const saveDot =
     saveState === 'saved'
       ? { color: '#7ec9a2', label: '● saved' }
@@ -237,36 +370,80 @@ export function TopNav({ canvasId }: { canvasId: string }) {
 
   return (
     <div style={navBar}>
-      <span style={{ fontWeight: 600 }}>gen_media</span>
+      <Link
+        href="/"
+        title="all canvases · home"
+        style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#dfe5ec', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+      >
+        <WordmarkGlyph />
+        <span>gen media</span>
+      </Link>
+
+      {editingCanvasName ? (
+        <input
+          autoFocus
+          value={canvasNameDraft}
+          onChange={(e) => setCanvasNameDraft(e.target.value)}
+          onKeyDown={onCanvasNameKeyDown}
+          onBlur={cancelEditCanvasName}
+          placeholder="untitled canvas"
+          style={navInput}
+        />
+      ) : (
+        <span
+          onClick={startEditCanvasName}
+          title="click to rename this canvas"
+          style={{
+            cursor: 'text',
+            color: canvasName ? '#dfe5ec' : '#5b6472',
+            fontStyle: canvasName ? 'normal' : 'italic',
+            maxWidth: 220,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {canvasName || 'untitled canvas'}
+        </span>
+      )}
 
       <div style={{ position: 'relative' }}>
-        <button style={navBtn} onClick={() => setSwitcherOpen((v) => !v)}>
-          {currentLabel} ▾
+        <button style={navBtn} onClick={() => setSwitcherOpen((v) => !v)} title="recent canvases">
+          ▾
         </button>
         {switcherOpen && (
           <div style={dropdown}>
             {recent.length === 0 && <div style={{ ...dropdownItem, color: '#5b6472' }}>No recent canvases</div>}
             {recent.map((e) => (
-              <button
-                key={e.id}
-                style={{ ...dropdownItem, color: e.id === canvasId ? '#2dd4bf' : '#dfe5ec' }}
-                onClick={() => {
-                  setSwitcherOpen(false)
-                  if (e.id !== canvasId) router.push(`/c/${e.id}`)
-                }}
-              >
-                {e.label}
-              </button>
+              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <button
+                  style={{ ...dropdownRowBtn, color: e.id === canvasId ? '#2dd4bf' : '#dfe5ec' }}
+                  onClick={() => {
+                    setSwitcherOpen(false)
+                    if (e.id !== canvasId) router.push(`/c/${e.id}`)
+                  }}
+                >
+                  {e.label}
+                </button>
+                <button
+                  style={dropdownDeleteBtn}
+                  title="delete this canvas"
+                  onClick={(ev) => void onDeleteCanvas(e.id, ev)}
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      <span style={{ flex: 1 }} />
-
       <button style={navBtn} onClick={() => void onNewCanvas()} disabled={creating}>
         {creating ? 'Creating…' : '+ New canvas'}
       </button>
+
+      <span style={{ flex: 1 }} />
+
       <button style={navBtn} onClick={onShare}>
         {shareCopied ? 'copied ✓' : 'Share'}
       </button>
