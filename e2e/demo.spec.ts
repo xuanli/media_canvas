@@ -15,6 +15,16 @@ import { test, expect, type Locator, type Page } from '@playwright/test'
 // so this filter can't mask a real save failure.
 const EXPECTED_FRESH_CANVAS_404 = /\/api\/canvas\/[a-z0-9]{12}$/
 
+// Derive bad canvas responses: PUT/POST failures or unexpected GET statuses.
+// Evaluated at assertion time (not at setup), so it sees all recorded responses.
+const badCanvasResponses = (rs: Array<{ url: string; method: string; status: number }>) =>
+  rs.filter(
+    (r) =>
+      (r.method === 'PUT' && r.status >= 400) ||
+      (r.method === 'GET' && r.status !== 200 && r.status !== 404) ||
+      (r.method === 'POST' && r.status >= 400)
+  )
+
 async function newCanvas(page: Page) {
   const errors: string[] = []
 
@@ -43,19 +53,11 @@ async function newCanvas(page: Page) {
     errors.push(m.text())
   })
 
-  // Derive bad canvas responses: PUT/POST failures or unexpected GET statuses.
-  const badCanvasResponses = canvasResponses.filter(
-    (r) =>
-      (r.method === 'PUT' && r.status >= 400) ||
-      (r.method === 'GET' && r.status !== 200 && r.status !== 404) ||
-      (r.method === 'POST' && r.status >= 400)
-  )
-
   page.on('pageerror', (e) => errors.push(String(e)))
   await page.goto('/')
   await page.getByRole('button', { name: /new canvas/i }).click()
   await page.waitForURL(/\/c\/[a-z0-9]{12}/)
-  return { errors, badCanvasResponses }
+  return { errors, canvasResponses }
 }
 
 const mockImg = (page: Page) => page.locator('img[src^="data:image/svg"]')
@@ -72,17 +74,17 @@ const mockImg = (page: Page) => page.locator('img[src^="data:image/svg"]')
 const clickNode = (n: Locator) => n.click({ force: true })
 
 test('generate creates a root node', async ({ page }) => {
-  const { errors, badCanvasResponses } = await newCanvas(page)
+  const { errors, canvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
   await page.keyboard.press('Enter')
   await expect(page.getByText(/v1 · generate/)).toBeVisible() // pending node, immediate
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 }) // mock fills in (1.5s server delay)
   expect(errors).toEqual([])
-  expect(badCanvasResponses).toEqual([])
+  expect(badCanvasResponses(canvasResponses)).toEqual([])
 })
 
 test('edit spawns variant children with arrows', async ({ page }) => {
-  const { errors, badCanvasResponses } = await newCanvas(page)
+  const { errors, canvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
@@ -102,11 +104,11 @@ test('edit spawns variant children with arrows', async ({ page }) => {
   // '.tl-arrow-hint' class exists in the installed 5.2.5).
   await expect(page.locator('div[data-shape-type="arrow"]').first()).toBeVisible()
   expect(errors).toEqual([])
-  expect(badCanvasResponses).toEqual([])
+  expect(badCanvasResponses(canvasResponses)).toEqual([])
 })
 
 test('canvas persists across reload', async ({ page }) => {
-  const { errors, badCanvasResponses } = await newCanvas(page)
+  const { errors, canvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('persistence check')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
@@ -115,7 +117,7 @@ test('canvas persists across reload', async ({ page }) => {
   await expect(page.getByText(/v1 · generate/)).toBeVisible({ timeout: 10_000 })
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
   expect(errors).toEqual([])
-  expect(badCanvasResponses).toEqual([])
+  expect(badCanvasResponses(canvasResponses)).toEqual([])
 })
 
 // Crop is an INSTANT op (lib/run-op.ts runInstantOp): no 1.5s mock server
@@ -125,7 +127,7 @@ test('canvas persists across reload', async ({ page }) => {
 // exercises the CropOverlay's real pointer-drag path (use-drag-rect.ts) for
 // the first time, rather than asserting against the contract alone.
 test('crop drag creates an instant child without panning the canvas', async ({ page }) => {
-  const { errors, badCanvasResponses } = await newCanvas(page)
+  const { errors, canvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
@@ -172,7 +174,7 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
   expect(Math.abs(nodeCenterAfter.y - nodeCenterBefore.y)).toBeLessThan(2)
 
   expect(errors).toEqual([])
-  expect(badCanvasResponses).toEqual([])
+  expect(badCanvasResponses(canvasResponses)).toEqual([])
 })
 
 // Reference-pick flow (Task 12): select A, arm Edit, "+ Reference", click B
@@ -182,7 +184,7 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
 // spawns a child off A with both a solid parent arrow and a dashed 'ref'
 // arrow from B (lib/run-op.ts createArrow(..., dashed=true) for the ref leg).
 test('reference pick flow: chip, selection restore, run', async ({ page }) => {
-  const { errors, badCanvasResponses } = await newCanvas(page)
+  const { errors, canvasResponses } = await newCanvas(page)
 
   // Root A
   await page.getByPlaceholder('Describe a new image…').fill('root A')
@@ -232,5 +234,5 @@ test('reference pick flow: chip, selection restore, run', async ({ page }) => {
   await expect(page.getByText('ref', { exact: true }).last()).toBeVisible()
 
   expect(errors).toEqual([])
-  expect(badCanvasResponses).toEqual([])
+  expect(badCanvasResponses(canvasResponses)).toEqual([])
 })
