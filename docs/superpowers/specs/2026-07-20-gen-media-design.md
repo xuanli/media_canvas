@@ -33,12 +33,13 @@ exploration tree. No modals, no modes, no second screen.
 | drag node | reposition (persists; never auto-reshuffled) |
 | drag background / scroll | pan / zoom |
 | double-click node | camera zooms to fit that node |
-| drag on selected image (region op armed) | draw inpaint/crop rect; drag text to place |
+| drag on selected image (region op armed) | draw inpaint/crop rect (text placement when stretch tool lands) |
 | Esc | disarm op, else deselect |
 | bottom prompt bar | generate a new root; Upload button beside it |
 
 **Toolset — one flat menu, two families, one grammar.** Verbs on the selected
-node: `✦ Edit · ✦ Inpaint · ✦ Vary · Crop · Resize · Text`. The ✦ badge marks
+node: `✦ Edit · ✦ Inpaint · ✦ Vary · Crop · Resize` (+ `Text` as stretch #1).
+The ✦ badge marks
 model calls (~seconds, N variants, costs API credit); unmarked verbs are
 instant, free, live-previewed. Every tool follows the same three-beat loop:
 
@@ -104,22 +105,32 @@ Decisions:
 - **`✦ Vary` is not a new op type:** it dispatches `edit` with a preset
   variation prompt ("subtle variation, keep composition and subject") for N
   children. One less concept in the schema.
-- **Persistence:** tldraw `persistenceKey` snapshot → localStorage (shapes with
-  op meta; images are URLs). Export/import of the snapshot JSON is the sharing
-  escape hatch. Conceptually `VersionNode` ≙ custom shape + `meta` (see §6).
+- **Persistence (user decision: canvas-as-URL in core):** a canvas is
+  `/c/:id`. The tldraw snapshot JSON is stored server-side in Vercel Blob via
+  `GET/PUT /api/canvas/:id` — debounced autosave (~2s idle) + flush on tab
+  close, last-write-wins. The server copy is the single durable source of
+  truth; the editor runs in memory (no IndexedDB `persistenceKey`, avoiding a
+  second authority). Anyone with the link can view and branch (README states
+  this). Export/import JSON + per-node PNG download are the escape hatches.
+  Conceptually `VersionNode` ≙ custom shape + validated props (see §6).
 
 ## 4. Architecture
 
 ```
 Browser: Next.js client
-  Canvas (tldraw, store = source of truth) · Inspector/op panels → localStorage
+  Canvas (tldraw, in-memory editor) · Inspector/op panels
   Instant ops run here in offscreen <canvas>
         │  POST /api/ops (model ops) · POST /api/upload (PNG → CDN URL)
-Server: Next.js API routes (holds FAL_KEY, stateless)
+        │  GET/PUT /api/canvas/:id (snapshot autosave, debounced)
+Server: Next.js API routes (holds FAL_KEY + PASSCODE, stateless compute)
   zod-validate op → registry lookup → fal.subscribe → { imageUrl, w, h }
-        │
-fal.ai models · all images live on fal.media CDN as stable URLs
+        │                                    │
+fal.ai models + fal.media CDN (images)   Vercel Blob (canvas snapshots)
 ```
+
+- **API protection:** shared passcode (env var) entered once in the UI, sent
+  as a header on all mutating routes; plus a hard spend cap in fal's
+  dashboard. No accounts.
 
 - **Deployable to Vercel** because no server disk/DB: images are CDN URLs,
   tree state is client-side. Deployed demo is per-browser; README says so.
@@ -188,8 +199,9 @@ hand-built tree arrows, no minimap, license watermark, learning curve).
 - Model/API failures → error nodes with human-readable message + Retry
   (recipe-preserving). Rate limits surface as "queued/rate-limited", not crashes.
 - Upload failures → node keeps working from data URL, badge + retry.
-- localStorage quota: data URLs are transient by design; if a write fails, warn
-  and offer JSON export.
+- Snapshot save failures (network/blob) → non-blocking "not saved" indicator
+  with retry; editing continues in memory; export JSON always available.
+- Wrong/missing passcode → 401 with a friendly re-prompt in the UI.
 - Missing FAL_KEY → `/api/ops` returns a setup hint surfaced in the UI.
 
 ## 8. Testing & verification
@@ -212,16 +224,19 @@ Weekend-honest strategy:
 2. `generate` end-to-end (prompt bar → /api/ops → real image node). **First
    demoable moment.**
 3. `edit` + variants + pending/error/retry nodes.
-4. Instant ops (crop → resize → text) + upload sync.
+4. Instant ops (crop → resize) + upload sync.
 5. `inpaint` (rect overlay → mask PNG → FLUX Fill).
-6. References (pick mode).
-7. Polish: zoom-to-edit feel, minimap, empty state, export/import, README.
-8. Deploy to Vercel; record demo path.
+6. Canvas-as-URL: `/c/:id` + Vercel Blob save/load + passcode gate.
+7. References (pick mode).
+8. Polish: zoom-to-edit feel, empty state, export/import, README.
+9. Deploy to Vercel; record demo path.
+   Stretch, in order: text overlay tool → compare view → intent compiler.
 
 Each step leaves a working app; if the weekend ends early, we ship the last
 completed step.
 
 ## 10. Out of scope (parked in CLAUDE.md "Later")
 
-Freehand mask brush · Claude op-routing/agent layer · video · auth/DB/multi-user
-· compare view (stretch) · single-shot intent compiler (stretch candidate).
+Text overlay (stretch #1, displaced by shareable canvases) · freehand mask
+brush · Claude op-routing/agent layer · video · auth/accounts (canvases are
+unlisted URLs) · compare view · minimap · single-shot intent compiler.

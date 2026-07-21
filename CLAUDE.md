@@ -32,8 +32,9 @@ polishing what exists? If no — cut it or park it in "Later".
   shows an action menu + inspector. Region gestures happen by zooming into the
   node (zoom-to-edit) — no modals, no modes. See `docs/design/ux-directions.html`.
 - **Ops (weekend scope)**: generate, edit (instruction, optional reference),
-  inpaint (rect region), upload, crop, resize, text overlay. Multi-variant runs
-  create pending sibling nodes; errors are retryable nodes.
+  inpaint (rect region), upload, crop, resize. Multi-variant runs create
+  pending sibling nodes; errors are retryable nodes. (Text overlay → stretch;
+  displaced by shareable canvases 2026-07-20.)
 - **Toolset UX**: one flat action menu on the selected node; AI ops carry a ✦
   spark badge (model call, ~seconds, N variants), instant ops don't (free, live
   preview). Every tool uses the same three-beat loop: arm → configure on the
@@ -42,8 +43,16 @@ polishing what exists? If no — cut it or park it in "Later".
   canvas node ('+ Reference' → pick mode → click node). Stored as
   `referenceNodeId` on the op.
 - **Data model**: immutable version nodes; the op that produced a node lives ON
-  the node (provenance = recipe = retry); edges derived from `parentId`;
-  tree JSON persisted to localStorage; images are fal.media CDN URLs only.
+  the node (provenance = recipe = retry); versions are tldraw custom shapes
+  (tree relation prop is `sourceId` — never reuse tldraw's own `parentId`);
+  edges are bound labeled arrows; images are fal.media CDN URLs only.
+- **Storage (user decision 2026-07-20: canvas-as-URL in CORE scope)**: a canvas
+  is `/c/:id`; snapshot JSON stored in Vercel Blob via `GET/PUT
+  /api/canvas/:id`, debounced autosave, last-write-wins, server is the single
+  durable source of truth (no IndexedDB persistenceKey). Export/import JSON +
+  per-node PNG download are the escape hatches.
+- **API protection**: shared passcode (env var, entered once, sent as header)
+  + hard spend cap in fal dashboard. No auth/user accounts.
 - **Stack**: Next.js (deployable to Vercel), **tldraw** canvas (user decision
   2026-07-20; chosen for canvas feel + free undo/redo/persistence + freehand
   brush path later). tldraw store is the single source of truth — versions are
@@ -64,11 +73,13 @@ polishing what exists? If no — cut it or park it in "Later".
 
 ## Explicitly OUT of weekend scope (parked in "Later")
 
-- Freehand mask brush (rect only; pipeline is brush-ready)
-- Claude-powered smart op routing
+- Text overlay tool (stretch #1 — displaced by shareable canvases)
+- Freehand mask brush (rect only; pipeline is brush-ready; cheap on tldraw)
+- Claude-powered smart op routing / agent layer (ops schema is agent-ready)
 - Video generation (the startup use case includes it; prototype is images only)
-- Auth, multi-user, server-side DB, cross-device sync
-- Side-by-side compare view (stretch goal only if ahead of schedule)
+- Auth / user accounts / per-user galleries (canvases are unlisted URLs)
+- Side-by-side compare view
+- Minimap (cut with the tldraw switch; zoom-to-fit covers navigation)
 
 ## Working agreements
 
