@@ -93,11 +93,17 @@ polishing what exists? If no — cut it or park it in "Later".
   `editor.createBinding({ type:'arrow', fromId, toId, props:{ terminal:'start'|'end' } })`
   and arrows track shape moves automatically (ArrowBindingUtil is in
   `defaultBindingUtils`); `stopEventPropagation(e)` on an overlay's
-  `onPointerDown` blocks canvas pan. NOTE: the two interactive checks
-  (overlay-pan-suppression, arrow-follows-drag) were verified by API-contract
-  (installed type defs) + the spike page fully typechecking and serving 200 —
-  NOT by live browser interaction (no browser/Playwright, and the headless
-  Editor needs jsdom which was unavailable).
+  `onPointerDown` blocks canvas pan. NOTE on verification tiers: the two
+  interactive checks (overlay-pan-suppression, arrow-follows-drag) AND the
+  CORS `toDataURL()` behavior were verified by API-contract/headers only —
+  NOT exercised in a live browser (no browser/Playwright at spike time; CORS
+  claim rests on the ACAO header, a strong but indirect signal). Task 8
+  manual verify + Task 12b Playwright exercise them for real.
+- **Live API verification 2026-07-20 (post-credits)**: `generate`
+  (flux-pro/v1.1) and `edit` (nano-banana/edit) confirmed with real 200
+  responses end-to-end (generate → edit chain on a real image). `inpaint`
+  (flux-pro/v1/fill) remains schema-verified only until Task 11 exercises it
+  with a real mask.
 
 ## Explicitly OUT of weekend scope (parked in "Later")
 
