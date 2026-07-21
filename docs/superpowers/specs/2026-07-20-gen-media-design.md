@@ -22,7 +22,7 @@ The scope filter for everything below: **a 3-minute demo, built in a weekend.**
 
 ## 2. UX (decided — see mockup page for visuals)
 
-**Canvas-First.** One continuous zoomable canvas (React Flow) holds the whole
+**Canvas-First.** One continuous zoomable canvas (tldraw) holds the whole
 exploration tree. No modals, no modes, no second screen.
 
 **Gesture model** (complete input vocabulary):
@@ -58,8 +58,8 @@ other canvas node attaches it (e.g. "match the style of v2"). Chat UIs cannot
 point at history; the canvas can.
 
 **Zoom-to-edit:** precision gestures happen by zooming into the node — the
-map's zoom is the magnifier. React Flow's `nodrag` class routes pointer events:
-drag on armed image = draw; drag background = pan.
+map's zoom is the magnifier. A pointer-capturing overlay on the armed shape
+routes events: drag on armed image = draw; drag background = pan.
 
 ## 3. Data model
 
@@ -104,14 +104,15 @@ Decisions:
 - **`✦ Vary` is not a new op type:** it dispatches `edit` with a preset
   variation prompt ("subtle variation, keep composition and subject") for N
   children. One less concept in the schema.
-- **Persistence:** Zustand + persist middleware → localStorage (tree JSON only;
-  images are URLs). Export/import of the same JSON is the sharing escape hatch.
+- **Persistence:** tldraw `persistenceKey` snapshot → localStorage (shapes with
+  op meta; images are URLs). Export/import of the snapshot JSON is the sharing
+  escape hatch. Conceptually `VersionNode` ≙ custom shape + `meta` (see §6).
 
 ## 4. Architecture
 
 ```
 Browser: Next.js client
-  Canvas (React Flow) · Inspector/op panels · Zustand store → localStorage
+  Canvas (tldraw, store = source of truth) · Inspector/op panels → localStorage
   Instant ops run here in offscreen <canvas>
         │  POST /api/ops (model ops) · POST /api/upload (PNG → CDN URL)
 Server: Next.js API routes (holds FAL_KEY, stateless)
@@ -153,16 +154,34 @@ then forks by family:
 - **Cancel** = delete the pending node (in-flight result discarded — accepted
   prototype tradeoff, noted in README).
 
-## 6. Canvas layout
+## 6. Canvas engine & layout
 
-- **Auto-placement, not auto-layout:** children spawn right of parent
-  (`x + NODE_W + GAP`), fanned vertically by sibling index, collision-nudged
-  down until free. **No global re-layout ever** — user-dragged positions are
-  permanent because spatial memory is a core value. (This is why not dagre.)
-- **Zoom-to-node:** React Flow `setCenter` animation on double-click.
+**Engine: tldraw** (user decision, revising the original React Flow plan —
+chosen for best-in-class canvas feel, built-in undo/redo + localStorage
+persistence, and a near-free freehand mask brush later; accepted costs:
+hand-built tree arrows, no minimap, license watermark, learning curve).
+
+- **Single source of truth = tldraw store.** Versions are custom
+  `ImageNodeShape`s carrying `meta: { op, status, imageUrl, width, height,
+  createdAt }`; tree helpers (childrenOf/recipeOf) read the editor store.
+  Persistence via `persistenceKey` snapshot. Undo/redo covers node ops for
+  free. Zustand holds only ephemeral UI state (armed tool, pick mode).
+- **Edges = bound arrow shapes** created programmatically on child spawn,
+  labeled with the op type; bindings make them follow dragged nodes.
+  Reference links are dashed arrows.
+- **Region gestures** = pointer-capturing overlay inside the selected shape's
+  component (fallback: idiomatic custom tldraw tool if events fight us).
+- **Auto-placement, not auto-layout:** children spawn right of parent, fanned
+  by sibling index, collision-nudged. **No global re-layout ever** — spatial
+  memory is a core value.
+- **Zoom-to-node:** `editor.zoomToBounds()` on double-click. Minimap cut;
+  zoom-to-fit covers navigation at demo scale.
 - **Coordinate utility:** one module owns screen↔natural-pixel conversion for
   marquee/crop/text. All geometry math is quarantined there and unit-tested.
-- Perf: fine at demo scale; `onlyRenderVisibleElements` available if needed.
+- **Spike gate (Saturday, timeboxed 2 hrs):** custom image shape + bound
+  labeled arrow + interactive overlay + one real fal call + canvas
+  `toDataURL()` CORS test. If the spike fails, revert to React Flow per the
+  original design (this section's history in git).
 
 ## 7. Error handling
 
@@ -188,7 +207,8 @@ Weekend-honest strategy:
 
 ## 9. Build order (de-risked)
 
-1. Scaffold: Next.js + React Flow + Zustand; fake nodes render, pan/zoom works.
+1. Spike gate (§6): tldraw image shape + bound arrow + overlay + one fal call
+   + CORS test. Then scaffold for real; fake nodes render, pan/zoom works.
 2. `generate` end-to-end (prompt bar → /api/ops → real image node). **First
    demoable moment.**
 3. `edit` + variants + pending/error/retry nodes.

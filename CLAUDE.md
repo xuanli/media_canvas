@@ -44,8 +44,14 @@ polishing what exists? If no — cut it or park it in "Later".
 - **Data model**: immutable version nodes; the op that produced a node lives ON
   the node (provenance = recipe = retry); edges derived from `parentId`;
   tree JSON persisted to localStorage; images are fal.media CDN URLs only.
-- **Stack**: Next.js (deployable to Vercel), React Flow canvas, Zustand state,
-  thin `/api/ops` + `/api/upload` routes proxying fal (key stays server-side).
+- **Stack**: Next.js (deployable to Vercel), **tldraw** canvas (user decision
+  2026-07-20; chosen for canvas feel + free undo/redo/persistence + freehand
+  brush path later). tldraw store is the single source of truth — versions are
+  custom shapes with op meta, edges are bound labeled arrows, persistence via
+  `persistenceKey`. Zustand only for ephemeral UI state. Thin `/api/ops` +
+  `/api/upload` routes proxying fal (key stays server-side). Minimap cut.
+  Fallback if the Saturday 2-hr tldraw spike fails: React Flow as originally
+  designed (see spec §4 history).
 - **Models via fal**, behind a small capability registry with one default per
   capability (generate → FLUX 1.1 pro, edit → nano-banana, inpaint → FLUX
   Fill) plus optional alternates (edit → FLUX Kontext, generate → Seedream).
