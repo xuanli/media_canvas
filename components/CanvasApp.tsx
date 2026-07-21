@@ -11,6 +11,8 @@ import { retryShape } from '@/lib/run-op'
 import { startSaveSync } from '@/lib/save-sync'
 import { useUiStore } from '@/lib/ui-store'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
+import { color, metric, type as typeTok } from '@/lib/design'
+import { IconFit, IconMinus, IconPlus } from '@/components/icons'
 
 export function CanvasApp({ canvasId }: { canvasId: string }) {
   const editorRef = useRef<Editor | null>(null)
@@ -107,6 +109,7 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
           <TopNav canvasId={canvasId} />
           <CommandBar />
           <EmptyHint />
+          <ZoomCluster />
         </Tldraw>
       </PasscodeGate>
     </div>
@@ -132,13 +135,120 @@ function EmptyHint() {
         left: '50%',
         transform: 'translate(-50%, -50%)',
         zIndex: 100,
-        color: '#5b6472',
-        fontSize: 14,
+        color: color.textMuted,
+        fontFamily: typeTok.fontUi,
+        fontSize: typeTok.base,
         pointerEvents: 'none',
         textAlign: 'center',
       }}
     >
       Type a prompt below to generate your first image
+    </div>
+  )
+}
+
+// Task 15B: bottom-right zoom cluster — [−] [percent, click resets to 100%]
+// [+] [Fit]. tldraw camera APIs (verified against the installed 5.2.5
+// @tldraw/editor types: editor.zoomIn/zoomOut/resetZoom/zoomToFit/
+// zoomToSelection, editor.getZoomLevel()) mirror exactly what tldraw's own
+// (hidden) zoom-in/zoom-out/zoom-to-100/zoom-to-fit/zoom-to-selection
+// actions call internally (src/lib/ui/context/actions.tsx in the installed
+// package) — same calls, same animation option shape, just our own chrome
+// instead of tldraw's default UI. Cmd+=/Cmd+- keep working independently of
+// this component: hideUi only skips mounting TldrawUiContent, but
+// TldrawUiInner still calls useKeyboardShortcuts() unconditionally
+// ("Keyboard shortcuts... should always be mounted, even when the UI is
+// hidden" — installed TldrawUi.tsx comment), so no shortcut re-wiring is
+// needed or attempted here.
+function ZoomCluster() {
+  const editor = useEditor()
+  const zoom = useValue('zoom-cluster-level', () => editor.getZoomLevel(), [editor])
+  const hasSelection = useValue(
+    'zoom-cluster-has-selection',
+    () => editor.getSelectedShapeIds().length > 0,
+    [editor]
+  )
+  const percent = Math.round(zoom * 100)
+
+  const btnStyle = {
+    width: metric.controlH,
+    height: metric.controlH,
+    padding: 0,
+    background: 'transparent',
+    color: color.textSecondary,
+    border: 0,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as const
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 12,
+        right: 12,
+        zIndex: 300,
+        display: 'flex',
+        alignItems: 'center',
+        background: color.barBg,
+        border: `1px solid ${color.border}`,
+        borderRadius: metric.radius,
+        overflow: 'hidden',
+        fontFamily: typeTok.fontUi,
+        fontSize: typeTok.secondary,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+      }}
+    >
+      <button
+        className="gm-icon-btn"
+        style={btnStyle}
+        aria-label="Zoom out"
+        title="Zoom out"
+        onClick={() => editor.zoomOut(undefined, { animation: { duration: 120 } })}
+      >
+        <IconMinus size={14} />
+      </button>
+      <button
+        className="gm-icon-btn"
+        style={{
+          ...btnStyle,
+          width: 48,
+          borderLeft: `1px solid ${color.border}`,
+          borderRight: `1px solid ${color.border}`,
+          color: color.text,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+        aria-label="Reset zoom to 100%"
+        title="Reset zoom to 100%"
+        onClick={() => editor.resetZoom(undefined, { animation: { duration: 120 } })}
+      >
+        {percent}%
+      </button>
+      <button
+        className="gm-icon-btn"
+        style={btnStyle}
+        aria-label="Zoom in"
+        title="Zoom in"
+        onClick={() => editor.zoomIn(undefined, { animation: { duration: 120 } })}
+      >
+        <IconPlus size={14} />
+      </button>
+      <button
+        className="gm-icon-btn"
+        style={{ ...btnStyle, width: 'auto', padding: '0 10px', gap: 6, borderLeft: `1px solid ${color.border}` }}
+        aria-label={hasSelection ? 'Fit to selection' : 'Fit to content'}
+        title={hasSelection ? 'Fit to selection' : 'Fit to content'}
+        onClick={() =>
+          hasSelection
+            ? editor.zoomToSelection({ animation: { duration: 200 } })
+            : editor.zoomToFit({ animation: { duration: 200 } })
+        }
+      >
+        <IconFit size={14} />
+        Fit
+      </button>
     </div>
   )
 }

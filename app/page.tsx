@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiPost } from '@/lib/api-client'
+import { color, metric, type as typeTok, buttonPrimary, inputField } from '@/lib/design'
 
 // PasscodeGate (components/PasscodeGate.tsx) isn't reused here: it's a
 // full-screen overlay that gates children behind a probe fetch + a hard
@@ -49,14 +50,14 @@ export default function Home() {
         inset: 0,
         display: 'grid',
         placeItems: 'center',
-        background: '#0b0e12',
-        color: '#dfe5ec',
-        fontFamily: 'ui-monospace, monospace',
+        background: color.navBg,
+        color: color.text,
+        fontFamily: typeTok.fontUi,
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
         <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.5 }}>gen_media</div>
-        <div style={{ fontSize: 13, color: '#8a95a3' }}>
+        <div style={{ fontSize: typeTok.base, color: color.textSecondary }}>
           A canvas where every generation and edit is a branch you can compare and refine.
         </div>
         {needsPasscode ? (
@@ -64,62 +65,31 @@ export default function Home() {
             onSubmit={unlock}
             style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, width: 220 }}
           >
-            <div style={{ fontSize: 12, color: '#8a95a3' }}>This canvas requires a passcode.</div>
+            <div style={{ fontSize: typeTok.secondary, color: color.textSecondary }}>This canvas requires a passcode.</div>
             <input
+              className="gm-input"
               type="password"
               autoFocus
               value={passcodeValue}
               onChange={(e) => setPasscodeValue(e.target.value)}
-              style={{
-                background: '#0f1216',
-                color: '#dfe5ec',
-                border: '1px solid #2d3540',
-                borderRadius: 6,
-                padding: '8px 10px',
-                fontFamily: 'inherit',
-                fontSize: 13,
-              }}
+              style={inputField()}
             />
-            <button
-              type="submit"
-              disabled={busy}
-              style={{
-                background: '#2dd4bf',
-                color: '#0b2622',
-                border: 0,
-                borderRadius: 6,
-                padding: '8px 10px',
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: busy ? 'default' : 'pointer',
-                opacity: busy ? 0.7 : 1,
-              }}
-            >
+            <button type="submit" className="gm-btn" disabled={busy} style={buttonPrimary({ disabled: busy })}>
               {busy ? 'Unlocking…' : 'Unlock'}
             </button>
-            {passcodeError && <div style={{ fontSize: 12, color: '#d98d80' }}>{passcodeError}</div>}
+            {passcodeError && <div style={{ fontSize: typeTok.secondary, color: color.danger }}>{passcodeError}</div>}
           </form>
         ) : (
           <button
+            className="gm-btn"
             onClick={() => newCanvas()}
             disabled={busy}
-            style={{
-              marginTop: 8,
-              background: '#2dd4bf',
-              color: '#0b2622',
-              border: 0,
-              borderRadius: 6,
-              padding: '10px 18px',
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: busy ? 'default' : 'pointer',
-              opacity: busy ? 0.7 : 1,
-            }}
+            style={{ ...buttonPrimary({ disabled: busy }), marginTop: 8, height: 40, padding: `0 ${metric.gapLg + 6}px` }}
           >
             {busy ? 'Creating…' : 'New canvas'}
           </button>
         )}
-        {error && <div style={{ fontSize: 12, color: '#d98d80' }}>{error}</div>}
+        {error && <div style={{ fontSize: typeTok.secondary, color: color.danger }}>{error}</div>}
       </div>
     </div>
   )

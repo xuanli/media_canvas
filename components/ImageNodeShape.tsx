@@ -17,6 +17,8 @@ import type { VersionNodeProps } from '@/lib/types'
 import { useUiStore } from '@/lib/ui-store'
 import { CropOverlay } from '@/components/overlays/CropOverlay'
 import { RegionOverlay } from '@/components/overlays/RegionOverlay'
+import { color, metric, type as typeTok } from '@/lib/design'
+import { IconSpinner, IconWarning } from '@/components/icons'
 
 /**
  * tldraw 5.2.5 corrections vs the v3-shaped brief (see CLAUDE.md "Spike PASSED"
@@ -189,13 +191,14 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
   const pickable = pickingRef && p.status === 'done' && !isSelected
   return (
     <HTMLContainer
+      className="gm-node-card"
       style={{
         width: p.w,
         height: p.h,
-        background: '#1e232b',
-        border: pickable ? '1px dashed #2dd4bf' : '1px solid #2d3540',
-        borderRadius: 7,
-        padding: 4,
+        background: color.cardBg,
+        border: pickable ? `1px dashed ${color.accent}` : `1px solid ${color.border}`,
+        borderRadius: metric.radiusLg,
+        padding: 5,
         display: 'flex',
         flexDirection: 'column',
         cursor: pickable ? 'crosshair' : undefined,
@@ -234,10 +237,10 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
               display: 'grid',
               placeItems: 'center',
               height: '100%',
-              color: '#2dd4bf',
+              color: color.accent,
             }}
           >
-            ⏳
+            <IconSpinner size={18} />
           </div>
         )}
         {p.status === 'error' && (
@@ -246,16 +249,28 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
               display: 'grid',
               placeItems: 'center',
               height: '100%',
-              color: '#d98d80',
-              fontSize: 11,
+              color: color.danger,
+              fontSize: typeTok.micro,
               textAlign: 'center',
             }}
           >
-            <div>
-              ⚠ {p.errorMessage ?? 'failed'}
-              <br />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <IconWarning size={16} />
+              <span>{p.errorMessage ?? 'failed'}</span>
               <button
-                style={{ pointerEvents: 'all' }}
+                className="gm-btn"
+                style={{
+                  pointerEvents: 'all',
+                  height: 22,
+                  padding: '0 8px',
+                  background: 'transparent',
+                  color: color.text,
+                  border: `1px solid ${color.border}`,
+                  borderRadius: metric.radiusSm,
+                  fontFamily: typeTok.fontUi,
+                  fontSize: typeTok.nano,
+                  cursor: 'pointer',
+                }}
                 onPointerDown={(e) => {
                   e.stopPropagation()
                   window.dispatchEvent(new CustomEvent('gm:retry', { detail: { shapeId: shape.id } }))
@@ -269,17 +284,20 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         {showCropOverlay && <CropOverlay />}
         {showRegionOverlay && <RegionOverlay />}
       </div>
-      <div style={{ padding: '3px 2px 0' }}>
+      <div style={{ padding: '4px 3px 1px' }}>
         {/* Task 15A: primary line is the user-facing name; secondary is the
             provenance recipe (was the whole label pre-15A). Falls back to
             the old full label when name is '' or undefined (old snapshots,
             or — shouldn't happen given run-op.ts's creation-site defaults —
-            an explicitly blanked name), so nothing goes visually empty. */}
+            an explicitly blanked name), so nothing goes visually empty.
+            Task 15B: sizes per the brief (name 11px primary, recipe 9px
+            muted) — name stays system-ui (it's a user-facing label, not
+            metadata); the recipe line stays monospace (metadata). */}
         <div
           style={{
-            fontFamily: 'ui-monospace, monospace',
-            fontSize: 9,
-            color: '#dfe5ec',
+            fontFamily: typeTok.fontUi,
+            fontSize: typeTok.micro,
+            color: color.text,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -291,9 +309,9 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         </div>
         <div
           style={{
-            fontFamily: 'ui-monospace, monospace',
-            fontSize: 8,
-            color: '#5b6472',
+            fontFamily: typeTok.fontMono,
+            fontSize: typeTok.nano,
+            color: color.textMuted,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',

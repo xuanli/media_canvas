@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { color, metric, type as typeTok, buttonPrimary, inputField } from '@/lib/design'
 
 // Gates canvas rendering behind the shared passcode (lib/server-auth.ts).
 // If localStorage already has one, we optimistically let the app through —
@@ -49,7 +50,7 @@ export function PasscodeGate({ children }: { children: ReactNode }) {
         inset: 0,
         display: 'grid',
         placeItems: 'center',
-        background: '#0b0e12',
+        background: color.navBg,
         zIndex: 1000,
       }}
     >
@@ -60,40 +61,23 @@ export function PasscodeGate({ children }: { children: ReactNode }) {
           flexDirection: 'column',
           gap: 10,
           width: 260,
-          background: '#181c22',
-          border: '1px solid #2d3540',
-          borderRadius: 8,
+          background: color.barBg,
+          border: `1px solid ${color.border}`,
+          borderRadius: metric.radiusLg,
           padding: 20,
+          fontFamily: typeTok.fontUi,
         }}
       >
-        <div style={{ color: '#dfe5ec', fontSize: 13 }}>Enter the passcode to continue.</div>
+        <div style={{ color: color.text, fontSize: typeTok.base }}>Enter the passcode to continue.</div>
         <input
+          className="gm-input"
           type="password"
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          style={{
-            background: '#0f1216',
-            color: '#dfe5ec',
-            border: '1px solid #2d3540',
-            borderRadius: 6,
-            padding: '8px 10px',
-            fontFamily: 'inherit',
-            fontSize: 13,
-          }}
+          style={inputField()}
         />
-        <button
-          type="submit"
-          style={{
-            background: '#2dd4bf',
-            color: '#0b2622',
-            border: 0,
-            borderRadius: 6,
-            padding: '8px 10px',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
+        <button type="submit" className="gm-btn" style={buttonPrimary()}>
           Continue
         </button>
       </form>

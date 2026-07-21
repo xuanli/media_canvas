@@ -13,6 +13,11 @@
 // commitCanvasName below) so it travels in the snapshot/share link. Switcher
 // rows gained a delete ✕ (confirm -> DELETE /api/canvas/:id -> remove from
 // recents -> if it was the current canvas, navigate home).
+//
+// Task 15B (design-quality pass): styling now flows through lib/design.ts's
+// tokens/builders instead of ad-hoc inline objects, and emoji/unicode glyphs
+// (▾ ✕ ✓) are replaced with the 16px SVG set from components/icons.tsx. No
+// logic/handlers changed — see task-15b-report.md.
 
 import {
   useEffect,
@@ -30,6 +35,8 @@ import { apiPost, apiDelete } from '@/lib/api-client'
 import { useUiStore } from '@/lib/ui-store'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
+import { color, metric, type as typeTok } from '@/lib/design'
+import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconX } from '@/components/icons'
 
 const RECENT_KEY = 'gm-recent'
 const RECENT_CAP = 10
@@ -73,71 +80,95 @@ function removeRecentEntry(id: string): RecentEntry[] {
   return list
 }
 
+// ── Task 15B styling: built on lib/design.ts tokens ──
+
 const navBar: CSSProperties = {
   position: 'absolute',
   top: 0,
   left: 0,
   right: 0,
-  height: 34,
+  height: 44,
   zIndex: 400,
-  background: '#181c22',
-  borderBottom: '1px solid #2d3540',
+  background: color.navBg,
+  borderBottom: `1px solid ${color.border}`,
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  padding: '0 12px',
-  fontSize: 11,
-  color: '#dfe5ec',
-  fontFamily: 'ui-monospace, monospace',
+  gap: metric.gapMd,
+  padding: `0 ${metric.gapLg}px`,
+  fontSize: typeTok.secondary,
+  color: color.text,
+  fontFamily: typeTok.fontUi,
 }
 
 const navBtn: CSSProperties = {
+  height: metric.controlH,
   background: 'transparent',
-  color: '#dfe5ec',
-  border: '1px solid #2d3540',
-  borderRadius: 5,
-  padding: '4px 8px',
-  fontSize: 10.5,
+  color: color.text,
+  border: `1px solid ${color.border}`,
+  borderRadius: metric.radius,
+  padding: `0 ${metric.gapMd}px`,
+  fontSize: typeTok.micro,
   cursor: 'pointer',
-  fontFamily: 'inherit',
+  fontFamily: typeTok.fontUi,
   whiteSpace: 'nowrap',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: metric.gapXs,
+  boxSizing: 'border-box',
+}
+
+const navIconBtn: CSSProperties = {
+  width: metric.controlH,
+  height: metric.controlH,
+  background: 'transparent',
+  color: color.textSecondary,
+  border: `1px solid ${color.border}`,
+  borderRadius: metric.radius,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxSizing: 'border-box',
 }
 
 const navInput: CSSProperties = {
-  background: '#0f1216',
-  color: '#dfe5ec',
-  border: '1px solid #2dd4bf',
-  borderRadius: 5,
-  padding: '3px 6px',
-  fontSize: 11,
-  fontFamily: 'inherit',
+  height: metric.controlH,
+  background: color.fieldBg,
+  color: color.text,
+  border: `1px solid ${color.accent}`,
+  borderRadius: metric.radius,
+  padding: `0 ${metric.gapMd}px`,
+  fontSize: typeTok.secondary,
+  fontFamily: typeTok.fontUi,
   width: 160,
+  boxSizing: 'border-box',
 }
 
 const dropdown: CSSProperties = {
   position: 'absolute',
-  top: 32,
+  top: metric.controlH + 4,
   zIndex: 401,
-  background: '#181c22',
-  border: '1px solid #2d3540',
-  borderRadius: 6,
+  background: color.overlayBg,
+  border: `1px solid ${color.border}`,
+  borderRadius: metric.radius,
   padding: 4,
   display: 'flex',
   flexDirection: 'column',
   minWidth: 200,
-  boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+  boxSizing: 'border-box',
 }
 
 const dropdownRowBtn: CSSProperties = {
   background: 'transparent',
-  color: '#dfe5ec',
+  color: color.text,
   border: 0,
-  borderRadius: 4,
+  borderRadius: metric.radiusSm,
   padding: '6px 8px',
-  fontSize: 11,
+  fontSize: typeTok.micro,
   textAlign: 'left',
   cursor: 'pointer',
-  fontFamily: 'inherit',
+  fontFamily: typeTok.fontUi,
   flex: 1,
   minWidth: 0,
   overflow: 'hidden',
@@ -147,26 +178,28 @@ const dropdownRowBtn: CSSProperties = {
 
 const dropdownItem: CSSProperties = {
   background: 'transparent',
-  color: '#dfe5ec',
+  color: color.text,
   border: 0,
-  borderRadius: 4,
+  borderRadius: metric.radiusSm,
   padding: '6px 8px',
-  fontSize: 11,
+  fontSize: typeTok.micro,
   textAlign: 'left',
   cursor: 'pointer',
-  fontFamily: 'inherit',
+  fontFamily: typeTok.fontUi,
 }
 
 const dropdownDeleteBtn: CSSProperties = {
   background: 'transparent',
-  color: '#8a95a3',
+  color: color.textMuted,
   border: 0,
-  borderRadius: 4,
-  width: 20,
-  height: 20,
+  borderRadius: metric.radiusSm,
+  width: 22,
+  height: 22,
   cursor: 'pointer',
-  fontSize: 11,
   flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 }
 
 // Task 15A wordmark (user #4): a small "2 nodes + edge" motif echoing the
@@ -176,9 +209,9 @@ const dropdownDeleteBtn: CSSProperties = {
 function WordmarkGlyph() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
-      <line x1="4" y1="12" x2="12" y2="4" stroke="#2dd4bf" strokeWidth="1.5" />
-      <circle cx="4" cy="12" r="2.5" fill="#181c22" stroke="#2dd4bf" strokeWidth="1.5" />
-      <circle cx="12" cy="4" r="2.5" fill="#2dd4bf" />
+      <line x1="4" y1="12" x2="12" y2="4" stroke={color.accent} strokeWidth="1.5" />
+      <circle cx="4" cy="12" r="2.5" fill={color.navBg} stroke={color.accent} strokeWidth="1.5" />
+      <circle cx="12" cy="4" r="2.5" fill={color.accent} />
     </svg>
   )
 }
@@ -363,17 +396,17 @@ export function TopNav({ canvasId }: { canvasId: string }) {
 
   const saveDot =
     saveState === 'saved'
-      ? { color: '#7ec9a2', label: '● saved' }
+      ? { color: color.success, label: 'Saved' }
       : saveState === 'saving'
-        ? { color: '#e0c05c', label: '◐ saving' }
-        : { color: '#d98d80', label: '⚠ not saved' }
+        ? { color: color.warning, label: 'Saving' }
+        : { color: color.danger, label: 'Not saved' }
 
   return (
     <div style={navBar}>
       <Link
         href="/"
         title="all canvases · home"
-        style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#dfe5ec', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, color: color.text, textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
       >
         <WordmarkGlyph />
         <span>gen media</span>
@@ -387,6 +420,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
           onKeyDown={onCanvasNameKeyDown}
           onBlur={cancelEditCanvasName}
           placeholder="untitled canvas"
+          className="gm-input"
           style={navInput}
         />
       ) : (
@@ -395,7 +429,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
           title="click to rename this canvas"
           style={{
             cursor: 'text',
-            color: canvasName ? '#dfe5ec' : '#5b6472',
+            color: canvasName ? color.text : color.textMuted,
             fontStyle: canvasName ? 'normal' : 'italic',
             maxWidth: 220,
             overflow: 'hidden',
@@ -408,16 +442,23 @@ export function TopNav({ canvasId }: { canvasId: string }) {
       )}
 
       <div style={{ position: 'relative' }}>
-        <button style={navBtn} onClick={() => setSwitcherOpen((v) => !v)} title="recent canvases">
-          ▾
+        <button
+          className="gm-icon-btn"
+          style={navIconBtn}
+          onClick={() => setSwitcherOpen((v) => !v)}
+          title="recent canvases"
+          aria-label="recent canvases"
+        >
+          <IconChevronDown />
         </button>
         {switcherOpen && (
           <div style={dropdown}>
-            {recent.length === 0 && <div style={{ ...dropdownItem, color: '#5b6472' }}>No recent canvases</div>}
+            {recent.length === 0 && <div style={{ ...dropdownItem, color: color.textMuted }}>No recent canvases</div>}
             {recent.map((e) => (
               <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <button
-                  style={{ ...dropdownRowBtn, color: e.id === canvasId ? '#2dd4bf' : '#dfe5ec' }}
+                  className="gm-dropdown-row"
+                  style={{ ...dropdownRowBtn, color: e.id === canvasId ? color.accent : color.text }}
                   onClick={() => {
                     setSwitcherOpen(false)
                     if (e.id !== canvasId) router.push(`/c/${e.id}`)
@@ -426,11 +467,13 @@ export function TopNav({ canvasId }: { canvasId: string }) {
                   {e.label}
                 </button>
                 <button
+                  className="gm-icon-btn"
                   style={dropdownDeleteBtn}
                   title="delete this canvas"
+                  aria-label="delete this canvas"
                   onClick={(ev) => void onDeleteCanvas(e.id, ev)}
                 >
-                  ✕
+                  <IconX size={12} />
                 </button>
               </div>
             ))}
@@ -438,34 +481,61 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         )}
       </div>
 
-      <button style={navBtn} onClick={() => void onNewCanvas()} disabled={creating}>
-        {creating ? 'Creating…' : '+ New canvas'}
+      <button className="gm-btn" style={navBtn} onClick={() => void onNewCanvas()} disabled={creating}>
+        {creating ? (
+          'Creating…'
+        ) : (
+          <>
+            <IconPlus size={14} />
+            New canvas
+          </>
+        )}
       </button>
 
       <span style={{ flex: 1 }} />
 
-      <button style={navBtn} onClick={onShare}>
-        {shareCopied ? 'copied ✓' : 'Share'}
+      <button className="gm-btn" style={navBtn} onClick={onShare}>
+        {shareCopied ? (
+          <>
+            <IconCheck size={14} />
+            Copied
+          </>
+        ) : (
+          <>
+            <IconShare size={14} />
+            Share
+          </>
+        )}
       </button>
 
       <div style={{ position: 'relative' }}>
-        <button style={navBtn} onClick={() => setExportOpen((v) => !v)}>
-          Export ▾
+        <button className="gm-btn" style={navBtn} onClick={() => setExportOpen((v) => !v)}>
+          Export
+          <IconChevronDown size={12} />
         </button>
         {exportOpen && (
           <div style={{ ...dropdown, right: 0 }}>
-            <button style={dropdownItem} onClick={onExportJson}>
+            <button className="gm-dropdown-row" style={dropdownItem} onClick={onExportJson}>
               Export JSON
             </button>
-            <button style={dropdownItem} onClick={() => fileInputRef.current?.click()}>
+            <button className="gm-dropdown-row" style={dropdownItem} onClick={() => fileInputRef.current?.click()}>
               Import JSON
             </button>
             <button
-              style={{ ...dropdownItem, color: selectedDone ? '#dfe5ec' : '#5b6472', cursor: selectedDone ? 'pointer' : 'not-allowed' }}
+              className="gm-dropdown-row"
+              style={{
+                ...dropdownItem,
+                color: selectedDone ? color.text : color.textMuted,
+                cursor: selectedDone ? 'pointer' : 'not-allowed',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: metric.gapXs,
+              }}
               onClick={onExportPng}
               disabled={!selectedDone}
               title={selectedDone ? undefined : 'select a finished node first'}
             >
+              <IconDownload size={12} />
               PNG of selected node
             </button>
             <input
@@ -479,20 +549,26 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         )}
       </div>
 
-      <span style={{ color: saveDot.color, fontSize: 10.5 }}>{saveDot.label}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span
+          aria-hidden="true"
+          style={{ width: 6, height: 6, borderRadius: '50%', background: saveDot.color, flexShrink: 0 }}
+        />
+        <span style={{ color: color.textSecondary, fontSize: typeTok.micro }}>{saveDot.label}</span>
+      </span>
 
       {importError && (
         <div
           style={{
             position: 'absolute',
-            top: 36,
+            top: 46,
             right: 12,
             background: '#2a1414',
             color: '#ff9c9c',
             border: '1px solid #5a2a2a',
-            borderRadius: 6,
+            borderRadius: metric.radius,
             padding: '4px 8px',
-            fontSize: 11,
+            fontSize: typeTok.micro,
             maxWidth: 220,
             zIndex: 401,
           }}

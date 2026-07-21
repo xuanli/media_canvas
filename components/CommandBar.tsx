@@ -27,6 +27,8 @@ import { runOp, runInstantOp, createUploadedRoot } from '@/lib/run-op'
 import { apiPost } from '@/lib/api-client'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import type { RectFrac } from '@/lib/types'
+import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton } from '@/lib/design'
+import { IconDownload, IconUpload, IconX } from '@/components/icons'
 
 // ── Ported verbatim from Inspector.tsx (task-10/11 fix-round comments kept) ──
 
@@ -99,7 +101,10 @@ const VERBS = [
   ['resize', 'Resize'],
 ] as const
 
-// ── styling: dark palette tokens already used across the app ──
+// ── Task 15B styling: built on lib/design.ts tokens (was ad-hoc inline
+// objects — the source of the Upload/input/Generate height mismatch this
+// task fixes: `field`/`primaryBtn`/the old Upload button override all now
+// share the exact same `metric.controlH` (32px) instead of drifting). ──
 
 const barShell: CSSProperties = {
   position: 'absolute',
@@ -108,59 +113,26 @@ const barShell: CSSProperties = {
   transform: 'translateX(-50%)',
   zIndex: 300,
   width: 'min(720px, calc(100vw - 24px))',
-  background: '#181c22',
-  border: '1px solid #2d3540',
-  borderRadius: 10,
-  color: '#dfe5ec',
-  fontSize: 12,
+  background: color.barBg,
+  border: `1px solid ${color.border}`,
+  borderRadius: metric.radiusLg,
+  color: color.text,
+  fontSize: typeTok.secondary,
+  fontFamily: typeTok.fontUi,
   // "simple CSS max-height/transform transition" (brief) for the tray
   // slide-up; disabled under prefers-reduced-motion via app/globals.css's
   // `.gm-bar` rule.
   overflow: 'hidden',
 }
 
-const field: CSSProperties = {
-  background: '#0f1216',
-  color: '#dfe5ec',
-  border: '1px solid #2d3540',
-  borderRadius: 6,
-  padding: '6px 8px',
-  fontFamily: 'inherit',
-  fontSize: 12,
-}
+const field: CSSProperties = inputField()
 
-const stepBtn: CSSProperties = {
-  background: '#232933',
-  color: '#dfe5ec',
-  border: '1px solid #2d3540',
-  borderRadius: 4,
-  width: 22,
-  height: 22,
-  cursor: 'pointer',
-}
+const stepBtn: CSSProperties = stepButton()
 
-const primaryBtn: CSSProperties = {
-  background: '#2dd4bf',
-  color: '#0b2622',
-  border: 0,
-  borderRadius: 6,
-  padding: '8px 10px',
-  fontWeight: 600,
-  cursor: 'pointer',
-}
+const primaryBtn: CSSProperties = buttonPrimary()
 
 function verbBtnStyle(active: boolean, disabled: boolean): CSSProperties {
-  return {
-    background: active ? '#2dd4bf' : 'transparent',
-    color: active ? '#0b2622' : disabled ? '#5b6472' : '#dfe5ec',
-    border: '1px solid #2d3540',
-    borderRadius: 5,
-    fontSize: 11,
-    padding: '4px 8px',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.6 : 1,
-    fontFamily: 'inherit',
-  }
+  return buttonSecondary({ active, disabled })
 }
 
 export function CommandBar() {
@@ -333,21 +305,24 @@ export function CommandBar() {
           style={{ display: 'none' }}
         />
         <button
+          className="gm-btn"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          style={{ ...stepBtn, width: 'auto', padding: '8px 10px', fontSize: 11 }}
+          style={buttonSecondary({ disabled: uploading })}
           title="upload PNG/JPEG as a new root node"
         >
-          {uploading ? '…' : '📎 Upload'}
+          <IconUpload size={14} />
+          {uploading ? '…' : 'Upload'}
         </button>
         <input
+          className="gm-input"
           value={genPrompt}
           onChange={(e) => setGenPrompt(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && go()}
           placeholder="Describe a new image…"
           style={{ ...field, flex: 1 }}
         />
-        <button onClick={go} style={primaryBtn}>
+        <button className="gm-btn" onClick={go} style={primaryBtn}>
           Generate
         </button>
         {uploadError && (
@@ -360,9 +335,9 @@ export function CommandBar() {
               background: '#2a1414',
               color: '#ff9c9c',
               border: '1px solid #5a2a2a',
-              borderRadius: 6,
+              borderRadius: metric.radius,
               padding: '4px 8px',
-              fontSize: 11,
+              fontSize: typeTok.micro,
             }}
           >
             {uploadError}
@@ -494,6 +469,7 @@ export function CommandBar() {
         return (
           <button
             key={tool}
+            className="gm-btn"
             disabled={disabled}
             title={disabled ? 'waiting for image' : undefined}
             onClick={() => !disabled && setArmedTool(armedTool === tool ? null : tool)}
@@ -510,9 +486,11 @@ export function CommandBar() {
           if (p.status !== 'done') e.preventDefault()
         }}
         title={p.status === 'done' ? 'download this node' : 'waiting for image'}
-        style={{ ...verbBtnStyle(false, p.status !== 'done'), textDecoration: 'none', display: 'inline-block' }}
+        aria-label={p.status === 'done' ? 'download this node' : 'waiting for image'}
+        className="gm-btn"
+        style={{ ...verbBtnStyle(false, p.status !== 'done'), textDecoration: 'none' }}
       >
-        ⬇
+        <IconDownload size={14} />
       </a>
     </div>
   )
@@ -521,22 +499,23 @@ export function CommandBar() {
     <div style={{ ...barShell, padding: 8 }} className="gm-bar">
       {!armedTool && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#8a95a3' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
             {editingName ? (
               <input
+                className="gm-input"
                 autoFocus
                 value={nameDraft}
                 onChange={(e) => setNameDraft(e.target.value)}
                 onKeyDown={onNameKeyDown}
                 onBlur={cancelEditName}
                 placeholder="name this node…"
-                style={{ ...field, padding: '3px 6px', fontSize: 11, width: 140 }}
+                style={{ ...inputField({ width: 140 }), height: 24, fontSize: typeTok.micro, padding: '0 6px' }}
               />
             ) : (
               <span
                 onClick={startEditName}
                 title="click to rename"
-                style={{ color: p.name ? '#dfe5ec' : '#5b6472', fontStyle: p.name ? 'normal' : 'italic', cursor: 'text' }}
+                style={{ color: p.name ? color.text : color.textMuted, fontStyle: p.name ? 'normal' : 'italic', cursor: 'text' }}
               >
                 {p.name || 'unnamed'}
               </span>
@@ -547,7 +526,7 @@ export function CommandBar() {
             </span>
           </div>
           {opPrompt && (
-            <div style={{ fontSize: 11, color: '#aab3bf', fontStyle: 'italic' }}>&ldquo;{opPrompt}&rdquo;</div>
+            <div style={{ fontSize: typeTok.micro, color: color.textSecondary, fontStyle: 'italic' }}>&ldquo;{opPrompt}&rdquo;</div>
           )}
           {verbRow}
         </div>
@@ -557,11 +536,11 @@ export function CommandBar() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           <div
             style={{
-              fontFamily: 'ui-monospace, monospace',
-              fontSize: 11,
-              color: '#8a95a3',
+              fontFamily: typeTok.fontMono,
+              fontSize: typeTok.micro,
+              color: color.textSecondary,
               paddingBottom: 8,
-              borderBottom: '1px solid #2d3540',
+              borderBottom: `1px solid ${color.border}`,
               marginBottom: 8,
             }}
           >
@@ -571,79 +550,79 @@ export function CommandBar() {
           {armedTool === 'edit' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <textarea
+                className="gm-input"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="describe the change…"
                 rows={2}
-                style={{ ...field, resize: 'vertical' }}
+                style={{ ...textareaField(), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <select value={model} onChange={(e) => setModel(e.target.value)} style={field}>
+                <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
                   {EDIT_MODELS.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.label}
                     </option>
                   ))}
                 </select>
-                <span style={{ color: '#8a95a3' }}>variants:</span>
-                <button onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
+                <span style={{ color: color.textSecondary }}>variants:</span>
+                <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
                   −
                 </button>
                 <span>{variants}</span>
-                <button onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
+                <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
                   +
                 </button>
                 {refId ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span
                       style={{
-                        background: '#0f1216',
-                        color: '#2dd4bf',
-                        border: '1px solid #2dd4bf',
-                        borderRadius: 6,
+                        background: color.fieldBg,
+                        color: color.accent,
+                        border: `1px solid ${color.accent}`,
+                        borderRadius: metric.radius,
                         padding: '4px 8px',
-                        fontSize: 11,
+                        fontSize: typeTok.micro,
                       }}
                     >
                       ref: v{refSeq ?? '?'}
                     </span>
                     <button
+                      className="gm-icon-btn"
                       onClick={() => setRefId(null)}
                       title="remove reference"
+                      aria-label="remove reference"
                       style={{
                         background: 'transparent',
-                        color: '#8a95a3',
-                        border: '1px solid #2d3540',
-                        borderRadius: 4,
+                        color: color.textSecondary,
+                        border: `1px solid ${color.border}`,
+                        borderRadius: metric.radiusSm,
                         width: 22,
                         height: 22,
                         cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                     >
-                      ✕
+                      <IconX size={12} />
                     </button>
                   </div>
                 ) : (
                   <button
+                    className="gm-btn"
                     onClick={startPick}
                     title={
                       pickingRef
                         ? 'click a done node on the canvas to attach it as a reference'
                         : 'attach another node as a reference image'
                     }
-                    style={{
-                      background: pickingRef ? '#2dd4bf' : 'transparent',
-                      color: pickingRef ? '#0b2622' : '#dfe5ec',
-                      border: '1px solid #2d3540',
-                      borderRadius: 6,
-                      padding: '6px 8px',
-                      cursor: 'pointer',
-                    }}
+                    style={buttonSecondary({ active: pickingRef })}
                   >
                     {pickingRef ? 'Pick a node…' : '+ Reference'}
                   </button>
                 )}
-                <button onClick={runEdit} style={{ ...primaryBtn, marginLeft: 'auto' }}>
+                <button className="gm-btn" onClick={runEdit} style={{ ...primaryBtn, marginLeft: 'auto' }}>
                   Run
                 </button>
               </div>
@@ -652,29 +631,23 @@ export function CommandBar() {
 
           {armedTool === 'crop' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ color: '#8a95a3' }}>drag on the image to draw a crop rect</div>
+              <div style={{ color: color.textSecondary }}>drag on the image to draw a crop rect</div>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 {ASPECT_PRESETS.map(([name, ratio]) => (
                   <button
                     key={name}
+                    className="gm-btn"
                     onClick={() => pickPreset(name, ratio)}
-                    style={{
-                      background: preset === name ? '#2dd4bf' : '#232933',
-                      color: preset === name ? '#0b2622' : '#dfe5ec',
-                      border: '1px solid #2d3540',
-                      borderRadius: 4,
-                      fontSize: 11,
-                      padding: '4px 8px',
-                      cursor: 'pointer',
-                    }}
+                    style={buttonSecondary({ active: preset === name })}
                   >
                     {name}
                   </button>
                 ))}
                 <button
+                  className="gm-btn"
                   onClick={applyCrop}
                   disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH)}
-                  style={{ ...primaryBtn, marginLeft: 'auto' }}
+                  style={{ ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) }), marginLeft: 'auto' }}
                 >
                   Apply — instant
                 </button>
@@ -684,27 +657,32 @@ export function CommandBar() {
 
           {armedTool === 'inpaint' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ color: '#8a95a3' }}>drag on the image to mark the region to replace</div>
+              <div style={{ color: color.textSecondary }}>drag on the image to mark the region to replace</div>
               <textarea
+                className="gm-input"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="describe what appears in the region…"
                 rows={2}
-                style={{ ...field, resize: 'vertical' }}
+                style={{ ...textareaField(), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#8a95a3' }}>variants:</span>
-                <button onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
+                <span style={{ color: color.textSecondary }}>variants:</span>
+                <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
                   −
                 </button>
                 <span>{variants}</span>
-                <button onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
+                <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
                   +
                 </button>
                 <button
+                  className="gm-btn"
                   onClick={runInpaint}
                   disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim()}
-                  style={{ ...primaryBtn, marginLeft: 'auto' }}
+                  style={{
+                    ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim() }),
+                    marginLeft: 'auto',
+                  }}
                 >
                   Run — inpaint
                 </button>
@@ -715,30 +693,32 @@ export function CommandBar() {
           {armedTool === 'resize' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: '#8a95a3', width: 14 }}>W</span>
+                <span style={{ color: color.textSecondary, width: 14 }}>W</span>
                 <input
+                  className="gm-input"
                   type="number"
                   min={1}
                   value={width}
                   onChange={(e) => onWidthChange(Number(e.target.value))}
                   style={{ ...field, flex: 1 }}
                 />
-                <span style={{ color: '#8a95a3', width: 14 }}>H</span>
+                <span style={{ color: color.textSecondary, width: 14 }}>H</span>
                 <input
+                  className="gm-input"
                   type="number"
                   min={1}
                   value={height}
                   onChange={(e) => setHeight(Number(e.target.value))}
                   style={{ ...field, flex: 1 }}
                 />
-                <button onClick={applyResize} disabled={width < 1 || height < 1} style={primaryBtn}>
+                <button className="gm-btn" onClick={applyResize} disabled={width < 1 || height < 1} style={buttonPrimary({ disabled: width < 1 || height < 1 })}>
                   Apply — instant
                 </button>
               </div>
             </div>
           )}
 
-          <div style={{ paddingTop: 8, marginTop: 8, borderTop: '1px solid #2d3540' }}>{verbRow}</div>
+          <div style={{ paddingTop: 8, marginTop: 8, borderTop: `1px solid ${color.border}` }}>{verbRow}</div>
         </div>
       )}
     </div>

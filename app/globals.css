@@ -12,3 +12,71 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 @media (prefers-reduced-motion: reduce) {
   .gm-bar { transition: none; }
 }
+
+/* Task 15B design-quality pass ("Runway-grade" chrome). Companion classes to
+   lib/design.ts's CSSProperties builders — inline styles can't express
+   :hover/:focus-visible, so the token module's colors/metrics are mirrored
+   here for the handful of rules that need real CSS. Values below (accent
+   #2dd4bf, border rgba(255,255,255,0.08)) must stay in sync with
+   lib/design.ts's `color` export. */
+
+.gm-btn, .gm-btn-ghost, .gm-input, .gm-dropdown-row, .gm-icon-btn {
+  transition: background-color 150ms ease-out, border-color 150ms ease-out,
+    color 150ms ease-out, filter 150ms ease-out;
+}
+
+/* Primary/secondary filled or bordered controls: +4% lightness on hover. */
+.gm-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.gm-btn:active:not(:disabled) { filter: brightness(0.96); }
+
+/* Tertiary/icon (borderless) controls: hover-surface instead of brightness,
+   since there's no fill to lighten. */
+.gm-btn-ghost:hover:not(:disabled), .gm-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.gm-dropdown-row:hover { background: rgba(255, 255, 255, 0.06); }
+
+.gm-input:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.16); }
+.gm-input:focus { border-color: #2dd4bf; outline: none; }
+
+/* Visible focus rings — accent, 2px, on every interactive control (keyboard
+   nav, not just mouse hover). */
+.gm-btn:focus-visible, .gm-btn-ghost:focus-visible, .gm-icon-btn:focus-visible,
+.gm-input:focus-visible, .gm-dropdown-row:focus-visible {
+  outline: 2px solid #2dd4bf;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gm-btn, .gm-btn-ghost, .gm-input, .gm-dropdown-row, .gm-icon-btn { transition: none; }
+}
+
+/* Pending-status spinner (ImageNodeShape) — 900ms linear spin, disabled
+   under reduced motion (shows a static ring instead of animating). */
+.gm-spin { animation: gm-spin-rotate 900ms linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .gm-spin { animation: none; }
+}
+@keyframes gm-spin-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Node-card elevation + selection ring (Task 15B). tldraw draws its own
+   selection indicator around the shape using --tl-color-selected (default
+   blue) — overridden here so armed/selected canvas nodes pick up the same
+   single accent used everywhere else in the chrome, per the brief's "accent
+   ONLY on primary actions / focus rings / selection" rule. */
+:root {
+  --tl-color-selected: #2dd4bf !important;
+  --tl-color-selected-contrast: #0b2622 !important;
+}
+
+.gm-node-card {
+  transition: box-shadow 150ms ease-out, border-color 150ms ease-out;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.24);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gm-node-card { transition: none; }
+}
