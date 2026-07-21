@@ -78,6 +78,26 @@ polishing what exists? If no — cut it or park it in "Later".
 - **Op dispatch**: direct primitives, no LLM in the operation loop. Ops are
   serializable recipes through one `runOp` entry point; a future agent is just
   another producer of ops (that's what "smart routing → Later" means).
+- **Spike PASSED 2026-07-20; tldraw confirmed; CORS: ok (no proxy needed for
+  client-side canvas ops)**. Task 2 spike verified against installed tldraw
+  5.2.5 + fal live API. fal.media CDN (`v3.fal.media`) returns
+  `access-control-allow-origin: *`, so `crossOrigin='anonymous'` + `toDataURL()`
+  will not taint the canvas — instant client-side ops (crop/resize/PNG export)
+  need NO fal proxy; the proxy is only for hiding FAL_KEY on model calls.
+  tldraw API corrections for later tasks: custom shapes MUST register their
+  type via `declare module 'tldraw' { interface TLGlobalShapePropsMap {...} }`
+  (else `TLShape` is a closed union and every `ShapeUtil`/`editor.createShape`
+  generic fails to typecheck); shape utils implement `getGeometry` +
+  `getIndicatorPath` (NOT the old JSX `indicator()`); arrow labels use
+  `props.richText` via `toRichText()` (NOT `props.text`); arrow bindings use
+  `editor.createBinding({ type:'arrow', fromId, toId, props:{ terminal:'start'|'end' } })`
+  and arrows track shape moves automatically (ArrowBindingUtil is in
+  `defaultBindingUtils`); `stopEventPropagation(e)` on an overlay's
+  `onPointerDown` blocks canvas pan. NOTE: the two interactive checks
+  (overlay-pan-suppression, arrow-follows-drag) were verified by API-contract
+  (installed type defs) + the spike page fully typechecking and serving 200 —
+  NOT by live browser interaction (no browser/Playwright, and the headless
+  Editor needs jsdom which was unavailable).
 
 ## Explicitly OUT of weekend scope (parked in "Later")
 
