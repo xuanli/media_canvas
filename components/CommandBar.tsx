@@ -132,7 +132,13 @@ const stepBtn: CSSProperties = stepButton()
 const primaryBtn: CSSProperties = buttonPrimary()
 
 function verbBtnStyle(active: boolean, disabled: boolean): CSSProperties {
-  return buttonSecondary({ active, disabled })
+  // Token-fidelity fix (review finding): the pre-design-system verbBtnStyle
+  // used a dedicated disabled-text literal (#5b6472, now color.textDisabled)
+  // distinct from the muted/informational gray (color.textMuted) that
+  // buttonSecondary() defaults to — restore that here via the explicit
+  // override rather than changing the shared default (Upload's disabled
+  // state and other buttonSecondary() call sites never had this literal).
+  return buttonSecondary({ active, disabled, disabledColor: color.textDisabled })
 }
 
 export function CommandBar() {

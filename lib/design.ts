@@ -34,6 +34,13 @@ export const color = {
   text: '#e6e9ee',
   textSecondary: '#9aa3ad',
   textMuted: '#666f7a',
+  // Distinct from textMuted (informational/placeholder gray): the original
+  // (pre-design-system, task-14) literal for disabled *interactive* text —
+  // restored here as its own token after a review caught it having drifted
+  // to textMuted during the buttonSecondary() refactor. See verbBtnStyle in
+  // CommandBar.tsx for the one call site that opts into it via
+  // buttonSecondary's `disabledColor`.
+  textDisabled: '#5b6472',
   // Accent — the ONLY color besides monochrome: primary actions, focus
   // rings, selection/armed states. Everything else stays monochrome.
   accent: '#2dd4bf',
@@ -79,6 +86,7 @@ interface ButtonOpts {
   active?: boolean
   disabled?: boolean
   compact?: boolean // no horizontal padding growth, used for icon-only squares
+  disabledColor?: string // override the disabled-state text color (buttonSecondary only)
 }
 
 /** Primary: filled accent, dark text. Generate/Run/Apply/Continue. */
@@ -108,12 +116,12 @@ export function buttonPrimary(opts: ButtonOpts = {}): CSSProperties {
 
 /** Secondary: bordered, transparent fill. `active` = armed/selected (takes accent fill). */
 export function buttonSecondary(opts: ButtonOpts = {}): CSSProperties {
-  const { active = false, disabled = false } = opts
+  const { active = false, disabled = false, disabledColor = color.textMuted } = opts
   return {
     height: metric.controlH,
     padding: `0 ${metric.paddingX}px`,
     background: active ? color.accent : 'transparent',
-    color: active ? color.accentText : disabled ? color.textMuted : color.text,
+    color: active ? color.accentText : disabled ? disabledColor : color.text,
     border: `1px solid ${active ? 'transparent' : color.border}`,
     borderRadius: metric.radius,
     fontFamily: type.fontUi,

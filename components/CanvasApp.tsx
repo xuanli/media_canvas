@@ -160,6 +160,33 @@ function EmptyHint() {
 // ("Keyboard shortcuts... should always be mounted, even when the UI is
 // hidden" — installed TldrawUi.tsx comment), so no shortcut re-wiring is
 // needed or attempted here.
+//
+// Fix round 1 (review finding — layout collision): this cluster (bottom:12,
+// right:12, ~180px wide at full size) and CommandBar's centered bar (up to
+// 720px wide, same bottom row) can overlap below ~1104px viewport width —
+// the bar stays at its 720px max until the viewport is only 744px wide, at
+// which point it already spans to within 12px of each edge, leaving no
+// horizontal room for anything else in that row. Two CSS-only breakpoints
+// (`.gm-zoom-cluster`/`.gm-zoom-percent` in app/globals.css) close every
+// gap, chosen from that same 720px/12px math rather than guessed:
+//   - <=1140px: drop the percent-readout segment (no separate "reset to
+//     100%" click target at this width — shift+0 / the container's own
+//     `title` cover it) so the cluster shrinks from ~180px to its measured
+//     compact width (~122px — icon-only [-][+][Fit], measured in an
+//     isolated Playwright run; a hand-estimate of ~100px undershot the
+//     real rendered "Fit" segment). Re-solving bar-right-edge <=
+//     cluster-left-edge with that 122px cluster gives a collision-free
+//     floor at a measured ~988px viewport width; 1140 keeps a comfortable
+//     margin above that.
+//   - <=1020px: even the ~122px compact cluster can't sit beside a 720px
+//     bar below that ~988px floor, so the cluster lifts to stack ABOVE the
+//     bar's row (still bottom-right, per the "keep it visually
+//     bottom-right, not top nav" constraint) instead of beside it. The
+//     lift distance was sized against the tallest real tray mood (armed
+//     'edit': header + 2-row textarea + controls row + verb row, measured
+//     181px at an 800px viewport in an isolated Playwright run) plus
+//     headroom — see the `bottom` value on `.gm-zoom-cluster` in
+//     app/globals.css for the exact number and its derivation comment.
 function ZoomCluster() {
   const editor = useEditor()
   const zoom = useValue('zoom-cluster-level', () => editor.getZoomLevel(), [editor])
@@ -185,11 +212,14 @@ function ZoomCluster() {
 
   return (
     <div
+      // Layout-critical box-model props (position/bottom/right/z-index) live
+      // in the `.gm-zoom-cluster` CSS class, not this inline style object,
+      // specifically so the collision-avoidance media queries in
+      // app/globals.css can override `bottom` per breakpoint without an
+      // !important fight against an inline style.
+      className="gm-zoom-cluster"
+      title={`Zoom: ${percent}%`}
       style={{
-        position: 'absolute',
-        bottom: 12,
-        right: 12,
-        zIndex: 300,
         display: 'flex',
         alignItems: 'center',
         background: color.barBg,
@@ -211,7 +241,7 @@ function ZoomCluster() {
         <IconMinus size={14} />
       </button>
       <button
-        className="gm-icon-btn"
+        className="gm-icon-btn gm-zoom-percent"
         style={{
           ...btnStyle,
           width: 48,
@@ -227,7 +257,7 @@ function ZoomCluster() {
         {percent}%
       </button>
       <button
-        className="gm-icon-btn"
+        className="gm-icon-btn gm-zoom-plus"
         style={btnStyle}
         aria-label="Zoom in"
         title="Zoom in"

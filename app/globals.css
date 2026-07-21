@@ -80,3 +80,52 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 @media (prefers-reduced-motion: reduce) {
   .gm-node-card { transition: none; }
 }
+
+/* Review fix round 1 — zoom cluster / command bar collision avoidance.
+   CommandBar's bar shell (components/CommandBar.tsx `barShell`) is
+   centered, `width: min(720px, calc(100vw - 24px))`, bottom:12, zIndex:300.
+   This cluster (components/CanvasApp.tsx ZoomCluster) sits bottom:12,
+   right:12, zIndex:300, in the same row. Below ~1104px viewport width the
+   bar's right edge (50vw + 360px, while it's still pinned to its 720px
+   max) crosses the cluster's left edge (100vw - 12px - cluster width).
+   Below 744px the bar has already eaten the full width down to ~12px
+   margins on each side, i.e. there is NEVER slack for anything beside it —
+   only stacking above/below avoids overlap there. Two breakpoints, sized
+   from that math (see the derivation comment on ZoomCluster in
+   CanvasApp.tsx):
+     - <=1140px: hide the percent-readout segment (`.gm-zoom-percent`),
+       shrinking the cluster from ~180px to its measured compact width
+       (~122px — the 3 icon segments plus dividers/border; a hand-estimate
+       of ~100px undershot the real rendered "Fit" segment). Re-solving
+       bar-right-edge <= cluster-left-edge with that measured 122px cluster
+       gives a collision-free floor at an isolated-Playwright-measured
+       ~988px viewport width; 1140 keeps a comfortable margin above the
+       1104px floor for the FULL cluster, well clear of both.
+     - <=1020px: even the ~122px compact cluster has no horizontal room
+       beside a 720px-max-width bar below the measured ~988px floor, so the
+       cluster stacks above the bar's row instead (`bottom` increases past
+       the tallest tray's rendered height) — 1020 keeps margin above that
+       988px floor. `bottom: 222px` covers the tallest observed tray (armed
+       'edit': measured 181px at an 800px viewport in an isolated
+       Playwright run) with ~41px of headroom above the bar's own 12px
+       bottom offset. */
+.gm-zoom-cluster {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 300;
+}
+@media (max-width: 1140px) {
+  /* !important: both buttons carry an inline `style` (ZoomCluster's shared
+     `btnStyle` object sets `display`/`border` inline for token-driven
+     colors/sizing) — inline styles beat non-!important stylesheet rules
+     regardless of specificity, so overriding `display`/`border-left` from
+     here requires it. */
+  .gm-zoom-percent { display: none !important; }
+  /* Restore the divider the (now-hidden) percent segment used to provide
+     between [-] and [+]. */
+  .gm-zoom-plus { border-left: 1px solid rgba(255, 255, 255, 0.08) !important; }
+}
+@media (max-width: 1020px) {
+  .gm-zoom-cluster { bottom: 222px; }
+}
