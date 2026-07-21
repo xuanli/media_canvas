@@ -173,12 +173,21 @@ export function Inspector() {
     setCropFrac(null)
   }, [selId, setCropFrac])
 
-  // Clear the drawn region rect whenever neither region tool is active
-  // (switching to another verb, or un-arming), so it doesn't linger for next
-  // time. crop and inpaint both draw into the same `cropFrac` field (see
-  // ui-store.ts) so both are exempted here.
+  // Clear the drawn region rect and any in-progress prompt on EVERY armedTool
+  // change (tracked via a ref so re-renders that leave armedTool unchanged —
+  // e.g. arming the same tool twice — don't wipe mid-typing state). A prior
+  // version only cleared when armedTool left the {crop, inpaint} pair, which
+  // let a direct crop<->inpaint switch (ActionMenu sets armedTool straight
+  // across) carry the previous tool's rect and prompt into Run/Apply for the
+  // new tool. crop and inpaint both draw into the same `cropFrac` field (see
+  // ui-store.ts); prompt is local state shared across Edit/Inpaint forms.
+  const prevArmedToolRef = useRef(armedTool)
   useEffect(() => {
-    if (armedTool !== 'crop' && armedTool !== 'inpaint') setCropFrac(null)
+    if (armedTool !== prevArmedToolRef.current) {
+      setCropFrac(null)
+      setPrompt('')
+    }
+    prevArmedToolRef.current = armedTool
   }, [armedTool, setCropFrac])
 
   // Resize form seeds from the shape's natural size each time it's (re-)armed
