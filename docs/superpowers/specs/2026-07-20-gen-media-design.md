@@ -67,15 +67,17 @@ routes events: drag on armed image = draw; drag background = pan.
 The entire persisted product state is one array of immutable version nodes.
 
 ```ts
-interface VersionNode {
+interface VersionNode {                // realized as tldraw custom-shape props
   id: string;
-  parentId: string | null;        // null → root (generated or uploaded)
+  sourceId: string | null;        // parent VERSION; null → root. (Named sourceId
+                                  // because tldraw shapes own `parentId`.)
   op: Operation;                  // the operation that PRODUCED this node
   status: 'pending' | 'done' | 'error';
-  imageUrl?: string;              // fal.media CDN URL (or data URL awaiting sync)
-  width?: number; height?: number;
+  kind: 'image' | 'video';        // 'image' only in prototype; named for the
+  assetUrl?: string;              // video extension (not imageUrl), CDN or data URL
+  naturalW?: number; naturalH?: number;
+  durationMs?: number;            // video-only, unused in prototype
   error?: { code: string; message: string };
-  x: number; y: number;           // canvas position
   createdAt: number;
 }
 
@@ -173,8 +175,8 @@ persistence, and a near-free freehand mask brush later; accepted costs:
 hand-built tree arrows, no minimap, license watermark, learning curve).
 
 - **Single source of truth = tldraw store.** Versions are custom
-  `ImageNodeShape`s carrying `meta: { op, status, imageUrl, width, height,
-  createdAt }`; tree helpers (childrenOf/recipeOf) read the editor store.
+  `ImageNodeShape`s carrying the §3 `VersionNode` fields as validated props;
+  tree helpers (childrenOf/recipeOf) read the editor store.
   Persistence via `persistenceKey` snapshot. Undo/redo covers node ops for
   free. Zustand holds only ephemeral UI state (armed tool, pick mode).
 - **Edges = bound arrow shapes** created programmatically on child spawn,
@@ -235,7 +237,23 @@ Weekend-honest strategy:
 Each step leaves a working app; if the weekend ends early, we ship the last
 completed step.
 
-## 10. Out of scope (parked in CLAUDE.md "Later")
+## 10. Extension map (designed-for, deliberately unbuilt)
+
+Seams paid for now (near-zero cost) so future work is additive, not migratory:
+
+- **Multiplayer** (`@tldraw/sync`): the store-is-source-of-truth rule makes the
+  canvas replication-ready; the invariant to preserve is *shared state lives in
+  shape props, Zustand only holds per-user ephemera*. Blocker is infra, not
+  design: sync needs a websocket host (e.g. Cloudflare DO), not Vercel lambdas.
+- **Video**: `kind`/`assetUrl`/`durationMs` in props (vs a later shape
+  migration); rendering behind an `AssetView` component (img today, video
+  branch later); video ops are new `Operation` union members + registry
+  capabilities (fal hosts Kling/Veo); instant tools will declare which kinds
+  they accept.
+- **More models**: one registry entry each; picker auto-appears; per-model
+  param schemas that auto-render controls are the named future seam.
+
+## 11. Out of scope (parked in CLAUDE.md "Later")
 
 Text overlay (stretch #1, displaced by shareable canvases) · freehand mask
 brush · Claude op-routing/agent layer · video · auth/accounts (canvases are

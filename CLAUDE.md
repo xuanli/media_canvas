@@ -74,6 +74,9 @@ polishing what exists? If no — cut it or park it in "Later".
 ## Explicitly OUT of weekend scope (parked in "Later")
 
 - Text overlay tool (stretch #1 — displaced by shareable canvases)
+- Multiplayer via @tldraw/sync (design-ready: shared state must live in shape
+  props, Zustand per-user only; needs a websocket host, not Vercel lambdas)
+- Video ops (schema pre-seamed: kind/assetUrl/durationMs, AssetView component)
 - Freehand mask brush (rect only; pipeline is brush-ready; cheap on tldraw)
 - Claude-powered smart op routing / agent layer (ops schema is agent-ready)
 - Video generation (the startup use case includes it; prototype is images only)
