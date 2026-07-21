@@ -56,12 +56,26 @@ function fitToAspect(
   return { x: x / naturalW, y: y / naturalH, w: w / naturalW, h: h / naturalH }
 }
 
-// Guard shared by the Apply button's disabled state and applyCrop's own
-// no-op check: both must agree on what counts as "too small to crop" (Minor
-// from task-10 review — the disabled check used to only look at w).
+// Guard shared by the Apply/Run buttons' disabled state and applyCrop's own
+// no-op check: both must agree on what counts as "too small to crop/inpaint"
+// (Minor from task-10 review — the disabled check used to only look at w).
+// Reused as-is for the inpaint region (Task 11) — same "drew a real rect or
+// not" question against the same fraction-of-measured-box representation.
 function cropTooSmall(frac: RectFrac | null, naturalW: number, naturalH: number): boolean {
   if (!frac) return true
   return frac.w * naturalW < 4 || frac.h * naturalH < 4
+}
+
+// Shared by applyCrop and runInpaint: converts a RectFrac (fraction of the
+// overlay's measured box) into clamped natural-px Rect. See CropOverlay's
+// leading comment / task-10-report.md "Fix round 1" for why this is a
+// direct fx*naturalW mapping with no synthetic display-space step.
+function fracToNaturalRect(f: RectFrac, naturalW: number, naturalH: number) {
+  const x = Math.min(naturalW, Math.max(0, Math.round(f.x * naturalW)))
+  const y = Math.min(naturalH, Math.max(0, Math.round(f.y * naturalH)))
+  const w = Math.max(1, Math.min(naturalW - x, Math.round(f.w * naturalW)))
+  const h = Math.max(1, Math.min(naturalH - y, Math.round(f.h * naturalH)))
+  return { x, y, w, h }
 }
 
 // Hardcoded client-side per the task brief: this is the "model picker where
@@ -159,10 +173,12 @@ export function Inspector() {
     setCropFrac(null)
   }, [selId, setCropFrac])
 
-  // Clear the drawn crop rect whenever crop isn't the active tool (switching
-  // to another verb, or un-arming), so it doesn't linger for next time.
+  // Clear the drawn region rect whenever neither region tool is active
+  // (switching to another verb, or un-arming), so it doesn't linger for next
+  // time. crop and inpaint both draw into the same `cropFrac` field (see
+  // ui-store.ts) so both are exempted here.
   useEffect(() => {
-    if (armedTool !== 'crop') setCropFrac(null)
+    if (armedTool !== 'crop' && armedTool !== 'inpaint') setCropFrac(null)
   }, [armedTool, setCropFrac])
 
   // Resize form seeds from the shape's natural size each time it's (re-)armed
@@ -226,14 +242,23 @@ export function Inspector() {
   // bypassing displayRectToNatural entirely for this path.
   const applyCrop = () => {
     if (cropTooSmall(cropFrac, p.naturalW, p.naturalH)) return
-    const f = cropFrac!
-    const x = Math.min(p.naturalW, Math.max(0, Math.round(f.x * p.naturalW)))
-    const y = Math.min(p.naturalH, Math.max(0, Math.round(f.y * p.naturalH)))
-    const w = Math.max(1, Math.min(p.naturalW - x, Math.round(f.w * p.naturalW)))
-    const h = Math.max(1, Math.min(p.naturalH - y, Math.round(f.h * p.naturalH)))
-    void runInstantOp(editor, sel.id, { type: 'crop', rect: { x, y, w, h } })
+    const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
+    void runInstantOp(editor, sel.id, { type: 'crop', rect })
     setArmedTool(null)
     setCropFrac(null)
+  }
+
+  // Same fraction→natural-px conversion as applyCrop (fracToNaturalRect),
+  // but dispatched through runOp (async model call) rather than
+  // runInstantOp — inpaint isn't deterministic client-side work.
+  const runInpaint = () => {
+    if (cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim()) return
+    const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
+    runOp(editor, sel.id, { type: 'inpaint', prompt, model: 'flux-fill', rect }, variants)
+    setArmedTool(null)
+    setCropFrac(null)
+    setPrompt('')
+    setVariants(1)
   }
 
   const applyResize = () => {
@@ -357,6 +382,36 @@ export function Inspector() {
             style={applyBtn}
           >
             Apply — instant
+          </button>
+        </div>
+      )}
+
+      {armedTool === 'inpaint' && (
+        <div style={formSection}>
+          <div style={{ color: '#8a95a3' }}>drag on the image to mark the region to replace</div>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="describe what appears in the region…"
+            rows={3}
+            style={{ ...field, resize: 'vertical' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#8a95a3' }}>variants:</span>
+            <button onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
+              −
+            </button>
+            <span>{variants}</span>
+            <button onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
+              +
+            </button>
+          </div>
+          <button
+            onClick={runInpaint}
+            disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim()}
+            style={applyBtn}
+          >
+            Run — inpaint
           </button>
         </div>
       )}

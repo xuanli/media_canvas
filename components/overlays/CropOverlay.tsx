@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '@/lib/ui-store'
-import type { RectFrac } from '@/lib/types'
+import { useDragRect } from '@/components/overlays/use-drag-rect'
 
 // Draws over the AssetView inside a selected, crop-armed ImageNodeShape.
 // Coordinates are tracked as FRACTIONS (0..1) of the overlay's own rendered
@@ -22,57 +21,17 @@ import type { RectFrac } from '@/lib/types'
 // now using objectFit: 'fill' — sidesteps the synthetic ratio entirely:
 // Inspector converts fx/fy/fw/fh directly to natural px with no intermediate
 // display-space representation.
-function rectFrom(a: { x: number; y: number }, b: { x: number; y: number }): RectFrac {
-  const x = Math.min(a.x, b.x)
-  const y = Math.min(a.y, b.y)
-  return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }
-}
-
+//
+// Task 11: the pointer-drag/fraction math is shared with RegionOverlay
+// (inpaint) — extracted into `use-drag-rect.ts` rather than duplicated.
 export function CropOverlay() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const dragStart = useRef<{ x: number; y: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
   const cropFrac = useUiStore((s) => s.cropFrac)
   const setCropFrac = useUiStore((s) => s.setCropFrac)
   const setArmedTool = useUiStore((s) => s.setArmedTool)
-
-  const toFrac = (e: React.PointerEvent): { x: number; y: number } => {
-    const r = containerRef.current!.getBoundingClientRect()
-    const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
-    const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
-    return { x: fx, y: fy }
-  }
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    e.stopPropagation()
-    ;(e.target as Element).setPointerCapture(e.pointerId)
-    const p = toFrac(e)
-    dragStart.current = p
-    setDragging(true)
-    setCropFrac({ x: p.x, y: p.y, w: 0, h: 0 })
-  }
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    e.stopPropagation()
-    if (!dragging || !dragStart.current) return
-    setCropFrac(rectFrom(dragStart.current, toFrac(e)))
-  }
-
-  const onPointerUp = (e: React.PointerEvent) => {
-    e.stopPropagation()
-    setDragging(false)
-    dragStart.current = null
-  }
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      setCropFrac(null)
-      setArmedTool(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [setCropFrac, setArmedTool])
+  const { containerRef, onPointerDown, onPointerMove, onPointerUp } = useDragRect(
+    setCropFrac,
+    () => setArmedTool(null)
+  )
 
   const box = cropFrac
     ? {

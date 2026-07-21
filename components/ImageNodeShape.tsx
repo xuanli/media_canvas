@@ -16,6 +16,7 @@ import {
 import type { VersionNodeProps } from '@/lib/types'
 import { useUiStore } from '@/lib/ui-store'
 import { CropOverlay } from '@/components/overlays/CropOverlay'
+import { RegionOverlay } from '@/components/overlays/RegionOverlay'
 
 /**
  * tldraw 5.2.5 corrections vs the v3-shaped brief (see CLAUDE.md "Spike PASSED"
@@ -156,6 +157,7 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
     [editor, shape.id]
   )
   const showCropOverlay = isSelected && armedTool === 'crop' && p.status === 'done'
+  const showRegionOverlay = isSelected && armedTool === 'inpaint' && p.status === 'done'
   return (
     <HTMLContainer
       style={{
@@ -210,6 +212,7 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
           </div>
         )}
         {showCropOverlay && <CropOverlay />}
+        {showRegionOverlay && <RegionOverlay />}
       </div>
       <div
         style={{
