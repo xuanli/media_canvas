@@ -105,10 +105,9 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
        beside a 720px-max-width bar below the measured ~988px floor, so the
        cluster stacks above the bar's row instead (`bottom` increases past
        the tallest tray's rendered height) — 1020 keeps margin above that
-       988px floor. `bottom: 222px` covers the tallest observed tray (armed
-       'edit': measured 181px at an 800px viewport in an isolated
-       Playwright run) with ~41px of headroom above the bar's own 12px
-       bottom offset. */
+       988px floor. `bottom: 244px` covers the tallest observed tray (armed
+       'inpaint': measured 202px at an 800px viewport in an isolated
+       Playwright run) plus ~12px bar bottom offset plus 30px real margin. */
 .gm-zoom-cluster {
   position: absolute;
   bottom: 12px;
@@ -127,5 +126,5 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   .gm-zoom-plus { border-left: 1px solid rgba(255, 255, 255, 0.08) !important; }
 }
 @media (max-width: 1020px) {
-  .gm-zoom-cluster { bottom: 222px; }
+  .gm-zoom-cluster { bottom: 244px; }
 }

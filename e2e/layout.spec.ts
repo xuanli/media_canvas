@@ -3,10 +3,11 @@ import { test, expect, type Page } from '@playwright/test'
 // Review fix round 1 — layout collision (Finding 1): the bottom-right zoom
 // cluster (components/CanvasApp.tsx ZoomCluster) and the centered
 // CommandBar (components/CommandBar.tsx) share the same fixed bottom row
-// and must never intersect at any viewport width >= 720px, across all three
-// CommandBar moods (idle / selected / armed — the armed 'edit' tray is the
-// tallest, most collision-prone shape). This spec is the regression guard
-// for that: 3 widths x 3 moods = 9 bounding-box intersection checks.
+// and must never intersect at any viewport width >= 720px, across all four
+// CommandBar moods (idle / selected / armed-edit / armed-inpaint — the
+// armed 'inpaint' tray is the tallest, most collision-prone shape). This
+// spec is the regression guard for that: 3 widths x 4 moods = 12 bounding-
+// box intersection checks.
 
 const WIDTHS = [800, 1024, 1440] as const
 const HEIGHT = 800
@@ -56,7 +57,7 @@ for (const width of WIDTHS) {
       await assertNoOverlap(page, `selected@${width}`)
     })
 
-    test(`armed mood — no overlap at ${width}`, async ({ page }) => {
+    test(`armed-edit mood — no overlap at ${width}`, async ({ page }) => {
       await newCanvas(page)
       await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
       await page.keyboard.press('Enter')
@@ -64,7 +65,18 @@ for (const width of WIDTHS) {
       await clickNode(mockImg(page))
       await page.getByRole('button', { name: '✦ Edit' }).click()
       await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible()
-      await assertNoOverlap(page, `armed@${width}`)
+      await assertNoOverlap(page, `armed-edit@${width}`)
+    })
+
+    test(`armed-inpaint mood — no overlap at ${width}`, async ({ page }) => {
+      await newCanvas(page)
+      await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
+      await page.keyboard.press('Enter')
+      await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
+      await clickNode(mockImg(page))
+      await page.getByRole('button', { name: '✦ Inpaint' }).click()
+      await expect(page.getByPlaceholder(/describe what appears in the region/i)).toBeVisible()
+      await assertNoOverlap(page, `armed-inpaint@${width}`)
     })
   })
 }

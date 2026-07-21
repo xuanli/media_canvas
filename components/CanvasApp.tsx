@@ -183,10 +183,10 @@ function EmptyHint() {
 //     bar's row (still bottom-right, per the "keep it visually
 //     bottom-right, not top nav" constraint) instead of beside it. The
 //     lift distance was sized against the tallest real tray mood (armed
-//     'edit': header + 2-row textarea + controls row + verb row, measured
-//     181px at an 800px viewport in an isolated Playwright run) plus
-//     headroom — see the `bottom` value on `.gm-zoom-cluster` in
-//     app/globals.css for the exact number and its derivation comment.
+//     'inpaint': measured 202px at an 800px viewport in an isolated
+//     Playwright run) plus headroom — see the `bottom` value on
+//     `.gm-zoom-cluster` in app/globals.css for the exact number and its
+//     derivation comment.
 function ZoomCluster() {
   const editor = useEditor()
   const zoom = useValue('zoom-cluster-level', () => editor.getZoomLevel(), [editor])
