@@ -5,6 +5,8 @@ import 'tldraw/tldraw.css'
 import { useCallback, useEffect, useRef } from 'react'
 import { ImageNodeUtil } from '@/components/ImageNodeShape'
 import { PromptBar } from '@/components/PromptBar'
+import { ActionMenu } from '@/components/ActionMenu'
+import { Inspector } from '@/components/Inspector'
 import { retryShape } from '@/lib/run-op'
 
 export function CanvasApp({ canvasId }: { canvasId: string }) {
@@ -32,6 +34,8 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
           it. */}
       <Tldraw shapeUtils={[ImageNodeUtil]} onMount={onMount} hideUi>
         <PromptBar />
+        <ActionMenu />
+        <Inspector />
       </Tldraw>
     </div>
   )
