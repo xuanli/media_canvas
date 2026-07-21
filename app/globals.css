@@ -1,0 +1,4 @@
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
+  font-family: system-ui, -apple-system, sans-serif; }
+* { box-sizing: border-box; }
