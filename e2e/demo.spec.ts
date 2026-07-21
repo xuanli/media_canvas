@@ -17,9 +17,29 @@ const EXPECTED_FRESH_CANVAS_404 = /\/api\/canvas\/[a-z0-9]{12}$/
 
 async function newCanvas(page: Page) {
   const errors: string[] = []
+
+  // Record responses for /api/canvas to enable response-correlated error filtering.
+  // Only console errors for GET 404 responses should be ignored; PUT failures and
+  // GET 500s must surface as test failures.
+  const canvasResponses: Array<{ url: string; method: string; status: number }> = []
+  page.on('response', (res) => {
+    if (res.url().includes('/api/canvas/')) {
+      canvasResponses.push({
+        url: res.url(),
+        method: res.request().method(),
+        status: res.status(),
+      })
+    }
+  })
+
   page.on('console', (m) => {
     if (m.type() !== 'error') return
-    if (EXPECTED_FRESH_CANVAS_404.test(m.location().url)) return
+    const url = m.location().url
+    if (EXPECTED_FRESH_CANVAS_404.test(url)) {
+      // Ignore only if a recorded response exists with GET 404 (may be two for React StrictMode).
+      const response = canvasResponses.find((r) => r.url === url && r.method === 'GET' && r.status === 404)
+      if (response) return
+    }
     errors.push(m.text())
   })
   page.on('pageerror', (e) => errors.push(String(e)))
@@ -62,6 +82,11 @@ test('edit spawns variant children with arrows', async ({ page }) => {
   await page.getByRole('button', { name: /^run$/i }).click()
   await expect(mockImg(page)).toHaveCount(2, { timeout: 10_000 })
   await expect(page.getByText(/v2 · edit/)).toBeVisible()
+  // Arrow labeled 'edit': confirm the edit operation created a labeled arrow
+  // (tldraw's off-screen .tl-text-measure clone sorts first in DOM order, so
+  // .last() is the real on-canvas label, mirroring the reference spec's proven
+  // pattern for label assertions).
+  await expect(page.getByText('edit', { exact: true }).last()).toBeVisible()
   // Solid parent->child arrow: tldraw renders each shape as a
   // div[data-shape-type=<type>] (confirmed against the real DOM — no
   // '.tl-arrow-hint' class exists in the installed 5.2.5).
@@ -172,6 +197,9 @@ test('reference pick flow: chip, selection restore, run', async ({ page }) => {
   await expect(page.getByText(/ref: v/i)).toBeVisible()
   // Selection restored to A: the ActionMenu (only rendered for the selected
   // image-node) and the Edit form (armedTool survives the pick) are back.
+  // Indirect proof: ActionMenu renders for any selected node, but the prompt
+  // value still reflects A's edit — if selection had landed on B, the Inspector's
+  // reset-effect would have cleared the prompt.
   await expect(page.getByRole('button', { name: '✦ Edit' })).toBeVisible()
   await expect(page.getByPlaceholder(/describe the change/i)).toHaveValue('combine with reference')
 
