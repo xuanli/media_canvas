@@ -52,7 +52,15 @@ polishing what exists? If no — cut it or park it in "Later".
   durable source of truth (no IndexedDB persistenceKey). Export/import JSON +
   per-node PNG download are the escape hatches.
 - **API protection**: shared passcode (env var, entered once, sent as header)
-  + hard spend cap in fal dashboard. No auth/user accounts.
+  + hard spend cap in fal dashboard. No auth/user accounts. Hardening baked
+  into v1: passcode fails CLOSED in production, timing-safe compare,
+  `server-only` imports guard FAL_KEY, 12-char crypto-random canvas ids,
+  magic-byte upload validation.
+- **Testing**: unit tests on pure logic; `FAL_MOCK`/`STORAGE_MOCK` env flags
+  give a free offline dev mode; Playwright E2E runs the demo path fully mocked
+  (`pnpm test:e2e`) with zero-console-error assertions; `docs/verify.md` is
+  the human pass for UX feel. Declined consciously: live smoke test, CSP
+  headers, rate limiting (spend cap is the money backstop).
 - **Stack**: Next.js (deployable to Vercel), **tldraw** canvas (user decision
   2026-07-20; chosen for canvas feel + free undo/redo/persistence + freehand
   brush path later). tldraw store is the single source of truth — versions are
