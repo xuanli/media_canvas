@@ -1,6 +1,6 @@
 import { createShapeId, toRichText, type Editor, type TLShapeId } from 'tldraw'
 import type { Operation, OpsResponse } from '@/lib/types'
-import { nextSeq, placeChildren } from '@/lib/tree'
+import { nextSeq, placeChildren, GAP_X } from '@/lib/tree'
 import { apiPost } from '@/lib/api-client'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { IMAGE_NODE_W } from '@/components/ImageNodeShape'
@@ -49,13 +49,14 @@ export function runOp(
   const parentBox = parent
     ? { x: parent.x, y: parent.y, w: parent.props.w, h: parent.props.h }
     : { x: 100, y: 100 + all.length * 40, w: IMAGE_NODE_W, h: 150 }
+  const occupiedBoxes = all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h }))
   const spots = parent
-    ? placeChildren(
-        parentBox,
+    ? placeChildren(parentBox, variants, occupiedBoxes)
+    : placeChildren(
+        { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
         variants,
-        all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h }))
+        occupiedBoxes
       )
-    : [{ x: parentBox.x, y: parentBox.y }]
   let seq = nextSeq(all.map((s) => s.props.seq))
   for (let i = 0; i < variants; i++) {
     const id = createShapeId()
