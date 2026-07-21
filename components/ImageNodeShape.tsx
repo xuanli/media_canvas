@@ -6,12 +6,16 @@ import {
   resizeBox,
   ShapeUtil,
   T,
+  useEditor,
+  useValue,
   type Geometry2d,
   type TLBaseShape,
   type TLIndicatorPath,
   type TLResizeInfo,
 } from 'tldraw'
 import type { VersionNodeProps } from '@/lib/types'
+import { useUiStore } from '@/lib/ui-store'
+import { CropOverlay } from '@/components/overlays/CropOverlay'
 
 /**
  * tldraw 5.2.5 corrections vs the v3-shaped brief (see CLAUDE.md "Spike PASSED"
@@ -121,78 +125,95 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
   }
 
   override component(shape: ImageNodeShape) {
-    const p = shape.props
-    return (
-      <HTMLContainer
+    // Delegates to a real function component: eslint's rules-of-hooks
+    // statically forbids hook calls inside a class method even though tldraw
+    // invokes `component()` from inside its own function-component wrapper
+    // at render time (confirmed by the Task 2 spike). Wrapping in an actual
+    // function component keeps the hooks (needed for the crop overlay's
+    // selection + armedTool checks) both lint-clean and semantically correct.
+    return <ImageNodeComponent shape={shape} />
+  }
+}
+
+function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
+  const p = shape.props
+  const editor = useEditor()
+  const armedTool = useUiStore((s) => s.armedTool)
+  const isSelected = useValue(
+    'image-node-selected',
+    () => editor.getSelectedShapeIds().includes(shape.id),
+    [editor, shape.id]
+  )
+  const showCropOverlay = isSelected && armedTool === 'crop' && p.status === 'done'
+  return (
+    <HTMLContainer
+      style={{
+        width: p.w,
+        height: p.h,
+        background: '#1e232b',
+        border: '1px solid #2d3540',
+        borderRadius: 7,
+        padding: 4,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {p.status === 'done' && <AssetView props={p} />}
+        {p.status === 'pending' && (
+          <div
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              height: '100%',
+              color: '#2dd4bf',
+            }}
+          >
+            ⏳
+          </div>
+        )}
+        {p.status === 'error' && (
+          <div
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              height: '100%',
+              color: '#d98d80',
+              fontSize: 11,
+              textAlign: 'center',
+            }}
+          >
+            <div>
+              ⚠ {p.errorMessage ?? 'failed'}
+              <br />
+              <button
+                style={{ pointerEvents: 'all' }}
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  window.dispatchEvent(new CustomEvent('gm:retry', { detail: { shapeId: shape.id } }))
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+        {showCropOverlay && <CropOverlay w={p.w - 8} naturalW={p.naturalW} naturalH={p.naturalH} />}
+      </div>
+      <div
         style={{
-          width: p.w,
-          height: p.h,
-          background: '#1e232b',
-          border: '1px solid #2d3540',
-          borderRadius: 7,
-          padding: 4,
-          display: 'flex',
-          flexDirection: 'column',
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: 9,
+          color: '#8a95a3',
+          padding: '3px 2px 0',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          {p.status === 'done' && <AssetView props={p} />}
-          {p.status === 'pending' && (
-            <div
-              style={{
-                display: 'grid',
-                placeItems: 'center',
-                height: '100%',
-                color: '#2dd4bf',
-              }}
-            >
-              ⏳
-            </div>
-          )}
-          {p.status === 'error' && (
-            <div
-              style={{
-                display: 'grid',
-                placeItems: 'center',
-                height: '100%',
-                color: '#d98d80',
-                fontSize: 11,
-                textAlign: 'center',
-              }}
-            >
-              <div>
-                ⚠ {p.errorMessage ?? 'failed'}
-                <br />
-                <button
-                  style={{ pointerEvents: 'all' }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    window.dispatchEvent(
-                      new CustomEvent('gm:retry', { detail: { shapeId: shape.id } })
-                    )
-                  }}
-                >
-                  Retry
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-        <div
-          style={{
-            fontFamily: 'ui-monospace, monospace',
-            fontSize: 9,
-            color: '#8a95a3',
-            padding: '3px 2px 0',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          v{p.seq} · {p.op.type}
-          {'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}
-        </div>
-      </HTMLContainer>
-    )
-  }
+        v{p.seq} · {p.op.type}
+        {'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}
+      </div>
+    </HTMLContainer>
+  )
 }

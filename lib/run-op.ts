@@ -84,6 +84,60 @@ export function runOp(
   }
 }
 
+// Instant ops (crop/resize) run entirely client-side and synchronously: the
+// output is known immediately (a canvas draw), so — unlike runOp's
+// pending→done async flow — we create the child already in 'done' state with
+// the local dataURL, then swap `assetUrl` to the fal-hosted CDN URL in the
+// background once /api/upload finishes. If that background upload fails, the
+// node stays usable (the dataURL keeps rendering) but is flagged 'unsynced'
+// so a future session knows the URL is only a local blob, not shareable.
+export async function runInstantOp(
+  editor: Editor,
+  sourceId: TLShapeId,
+  op: Extract<Operation, { type: 'crop' } | { type: 'resize' }>
+): Promise<void> {
+  const parent = nodes(editor).find((s) => s.id === sourceId)
+  if (!parent) return
+  const { cropImage, resizeImage } = await import('@/lib/instant-ops')
+  const out =
+    op.type === 'crop'
+      ? await cropImage(parent.props.assetUrl, op.rect)
+      : await resizeImage(parent.props.assetUrl, op.width, op.height)
+  const all = nodes(editor)
+  const [spot] = placeChildren(
+    { x: parent.x, y: parent.y, w: parent.props.w, h: parent.props.h },
+    1,
+    all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h }))
+  )
+  const id = createShapeId()
+  editor.createShape<ImageNodeShape>({
+    id,
+    type: 'image-node',
+    x: spot?.x ?? parent.x,
+    y: spot?.y ?? parent.y,
+    props: {
+      w: IMAGE_NODE_W,
+      h: Math.round(IMAGE_NODE_W * (out.height / out.width)) + 18,
+      seq: nextSeq(all.map((s) => s.props.seq)),
+      status: 'done',
+      kind: 'image',
+      assetUrl: out.dataUrl,
+      naturalW: out.width,
+      naturalH: out.height,
+      sourceId,
+      op,
+      createdAt: Date.now(),
+    },
+  })
+  createArrow(editor, parent.id, id, op.type)
+  try {
+    const { url } = await apiPost<{ url: string }>('/api/upload', { dataUrl: out.dataUrl }, false)
+    editor.updateShape<ImageNodeShape>({ id, type: 'image-node', props: { assetUrl: url } })
+  } catch {
+    editor.updateShape<ImageNodeShape>({ id, type: 'image-node', props: { errorCode: 'unsynced' } })
+  }
+}
+
 export function retryShape(
   editor: Editor,
   shapeId: TLShapeId,
@@ -157,10 +211,34 @@ async function dispatch(
         )
         break
       }
-      case 'inpaint':
-        // lib/instant-ops (renderRectMask) is a later task's deliverable
-        // (Task 10). Keep this dispatch exhaustive and compiling until then.
-        throw new Error('inpaint requires instant-ops — arrives in a later task')
+      case 'inpaint': {
+        if (!parentUrl) throw new Error('inpaint requires a source image')
+        // The mask canvas must match the SOURCE (parent) image's natural
+        // size — the child being dispatched here doesn't have one yet.
+        // `shapeId`'s own `sourceId` points at that parent node.
+        const child = nodes(editor).find((s) => s.id === shapeId)
+        const parent = child?.props.sourceId
+          ? nodes(editor).find((s) => s.id === child.props.sourceId)
+          : undefined
+        if (!parent) throw new Error('inpaint could not locate the source node for mask sizing')
+        const { renderRectMask } = await import('@/lib/instant-ops')
+        const maskDataUrl = await renderRectMask(op.rect, parent.props.naturalW, parent.props.naturalH)
+        const { url: maskUrl } = await apiPost<{ url: string }>(
+          '/api/upload',
+          { dataUrl: maskDataUrl },
+          false
+        )
+        done(
+          await apiPost<OpsResponse>('/api/ops', {
+            capability: 'inpaint',
+            model: op.model,
+            prompt: op.prompt,
+            imageUrl: parentUrl,
+            maskUrl,
+          })
+        )
+        break
+      }
       case 'upload':
       case 'crop':
       case 'resize':
