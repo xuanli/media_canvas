@@ -2,3 +2,13 @@
 html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   font-family: system-ui, -apple-system, sans-serif; }
 * { box-sizing: border-box; }
+
+/* v2 chrome (Task 14): CommandBar's calm-bar <-> tray morph. Grid-template-rows
+   animates height from content (no fixed max-height guess needed) while the
+   inner wrapper stays a single block, and a subtle translateY sells the
+   "slides up" framing from the Bar B mockup. Respects prefers-reduced-motion
+   by dropping straight to the end state with no transition. */
+.gm-bar { transition: transform 180ms ease, opacity 180ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .gm-bar { transition: none; }
+}

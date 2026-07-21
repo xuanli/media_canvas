@@ -1,39 +1,16 @@
 'use client'
 
-import { Tldraw, getSnapshot, loadSnapshot, useEditor, useValue, type Editor, type TLShapeId } from 'tldraw'
+import { Tldraw, loadSnapshot, useEditor, useValue, type Editor, type TLShapeId } from 'tldraw'
 import 'tldraw/tldraw.css'
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
-import { ImageNodeUtil, type ImageNodeShape } from '@/components/ImageNodeShape'
-import { PromptBar } from '@/components/PromptBar'
-import { ActionMenu } from '@/components/ActionMenu'
-import { Inspector } from '@/components/Inspector'
+import { useCallback, useEffect, useRef } from 'react'
+import { ImageNodeUtil } from '@/components/ImageNodeShape'
+import { TopNav } from '@/components/TopNav'
+import { CommandBar } from '@/components/CommandBar'
 import { PasscodeGate } from '@/components/PasscodeGate'
 import { retryShape } from '@/lib/run-op'
 import { startSaveSync } from '@/lib/save-sync'
 import { useUiStore } from '@/lib/ui-store'
-
-// Bug fix (human-reported): a snapshot can capture an image-node mid-flight
-// (status 'pending') if the tab was closed, refreshed, or crashed while a
-// generate/edit/inpaint call was still in the air — the fetch that would
-// eventually resolve that node belonged to the PREVIOUS page load and is
-// gone. Loading that snapshot back (on mount, or via Import JSON) would
-// otherwise show a spinner that never resolves. Sweep every such node to
-// 'error' immediately after a snapshot loads so the existing Retry button +
-// op-as-recipe (the op that would produce the node lives ON the node) can
-// recover it — same recovery path as any other failed op.
-function sweepInterruptedNodes(editor: Editor): void {
-  const stuck = editor
-    .getCurrentPageShapes()
-    .filter((s): s is ImageNodeShape => s.type === 'image-node' && s.props.status === 'pending')
-  if (stuck.length === 0) return
-  editor.updateShapes<ImageNodeShape>(
-    stuck.map((s) => ({
-      id: s.id,
-      type: 'image-node',
-      props: { status: 'error', errorCode: 'interrupted', errorMessage: 'Interrupted — press Retry' },
-    }))
-  )
-}
+import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
 
 export function CanvasApp({ canvasId }: { canvasId: string }) {
   const editorRef = useRef<Editor | null>(null)
@@ -120,133 +97,18 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
       <PasscodeGate>
         {/* hideUi removes tldraw's default toolbar/menus (installed prop,
             verified in node_modules @tldraw/editor TldrawBaseProps) — our own
-            verb UI (PromptBar now, node action menu in later tasks) replaces
-            it. */}
+            chrome (TopNav + CommandBar, v2 chrome Task 14) replaces it. */}
         <Tldraw
           shapeUtils={[ImageNodeUtil]}
           onMount={onMount}
           hideUi
           licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
         >
-          <PromptBar />
-          <ActionMenu />
-          <Inspector />
-          <TopBar />
+          <TopNav canvasId={canvasId} />
+          <CommandBar />
           <EmptyHint />
         </Tldraw>
       </PasscodeGate>
-    </div>
-  )
-}
-
-const topBarBtn: CSSProperties = {
-  background: '#181c22',
-  color: '#dfe5ec',
-  border: '1px solid #2d3540',
-  borderRadius: 6,
-  padding: '6px 10px',
-  fontSize: 11,
-  cursor: 'pointer',
-}
-
-// Export/Import (polish, top-right): export downloads the full store
-// snapshot (`getSnapshot`) as JSON; import reads a file back through
-// `loadSnapshot` on the same store, so it replaces the current canvas'
-// content in place (no new canvasId, no server round-trip). Anchored at
-// top:12/right:12 — Inspector.tsx sits at top:48 specifically to leave this
-// row clear rather than overlap it (see that file's `panel` comment).
-function TopBar() {
-  const editor = useEditor()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  // Fix round 1 (task-12-report.md, Finding 4): the import catch used to be
-  // a silent no-op, so a malformed/non-canvas file gave zero feedback. Now
-  // surfaced as a small inline banner under the bar; it clears on the next
-  // successful import (see onImportChange's try branch) or on its own after
-  // a few seconds, via the ref-tracked timer below (cleared/reset on
-  // unmount and on each new import attempt so timers don't stack).
-  const [importError, setImportError] = useState<string | null>(null)
-  const importErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (importErrorTimerRef.current) clearTimeout(importErrorTimerRef.current)
-    }
-  }, [])
-
-  const onExport = () => {
-    const snapshot = getSnapshot(editor.store)
-    const blob = new Blob([JSON.stringify(snapshot)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'gen-media-canvas.json'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const onImportChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // allow re-importing the same filename twice in a row
-    if (!file) return
-    if (importErrorTimerRef.current) {
-      clearTimeout(importErrorTimerRef.current)
-      importErrorTimerRef.current = null
-    }
-    try {
-      const snapshot = JSON.parse(await file.text())
-      loadSnapshot(editor.store, snapshot)
-      sweepInterruptedNodes(editor)
-      setImportError(null)
-    } catch {
-      setImportError('Import failed: not a valid canvas file')
-      importErrorTimerRef.current = setTimeout(() => setImportError(null), 4000)
-    }
-  }
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 12,
-        right: 12,
-        zIndex: 300,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-end',
-        gap: 6,
-      }}
-    >
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={onExport} style={topBarBtn}>
-          Export JSON
-        </button>
-        <button onClick={() => fileInputRef.current?.click()} style={topBarBtn}>
-          Import JSON
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          onChange={(e) => void onImportChange(e)}
-          style={{ display: 'none' }}
-        />
-      </div>
-      {importError && (
-        <div
-          style={{
-            background: '#2a1414',
-            color: '#ff9c9c',
-            border: '1px solid #5a2a2a',
-            borderRadius: 6,
-            padding: '4px 8px',
-            fontSize: 11,
-            maxWidth: 220,
-            textAlign: 'right',
-          }}
-        >
-          {importError}
-        </div>
-      )}
     </div>
   )
 }

@@ -151,6 +151,56 @@ export async function runInstantOp(
   }
 }
 
+// Un-cuts the `upload` op (CLAUDE.md "Ops" line, Task 14 v2 chrome): places a
+// root node — like runOp's sourceId=null branch — for an image the user
+// already has a URL for (already uploaded via /api/upload by the caller;
+// this helper doesn't do the network upload itself, mirroring how
+// runInstantOp is handed an already-computed result rather than fetching
+// one). Natural dims come from actually loading the image (same technique as
+// dispatch()'s done() backfill in this file) since /api/upload doesn't
+// report them. Status is 'done' immediately — unlike runOp's pending->done
+// flow, there's no async model call in flight once the dims are known.
+export function createUploadedRoot(editor: Editor, url: string, filename: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const naturalW = img.naturalWidth
+      const naturalH = img.naturalHeight
+      const all = nodes(editor)
+      const parentBox = { x: 100, y: 100 + all.length * 40, w: IMAGE_NODE_W, h: 150 }
+      const [spot] = placeChildren(
+        { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
+        1,
+        all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h }))
+      )
+      const id = createShapeId()
+      editor.createShape<ImageNodeShape>({
+        id,
+        type: 'image-node',
+        x: spot?.x ?? parentBox.x,
+        y: spot?.y ?? parentBox.y,
+        props: {
+          w: IMAGE_NODE_W,
+          h: naturalW ? Math.round(IMAGE_NODE_W * (naturalH / naturalW)) + 18 : 150,
+          seq: nextSeq(all.map((s) => s.props.seq)),
+          status: 'done',
+          kind: 'image',
+          assetUrl: url,
+          naturalW,
+          naturalH,
+          sourceId: null,
+          op: { type: 'upload', filename },
+          createdAt: Date.now(),
+        },
+      })
+      resolve()
+    }
+    img.onerror = () => reject(new Error('could not read the uploaded image'))
+    img.src = url
+  })
+}
+
 export function retryShape(
   editor: Editor,
   shapeId: TLShapeId,

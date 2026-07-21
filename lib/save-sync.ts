@@ -1,15 +1,20 @@
 import { getSnapshot, type Editor } from 'tldraw'
 import { getPasscode } from '@/lib/api-client'
+import { useUiStore } from '@/lib/ui-store'
 
 // Debounced autosave: any 'document'-scope, 'user'-sourced store change
 // (i.e. not tldraw's own remote-sync echoes, not ephemeral/presence state)
 // schedules a save 2s out, coalescing bursts (multi-variant runOp, drags)
 // into one PUT. `document.title` doubles as a lightweight dirty/error
-// indicator so a stalled save is visible without dedicated UI.
+// indicator so a stalled save is visible without dedicated UI. Task 14: ALSO
+// mirrors the same three states into ui-store.saveState so TopNav's save dot
+// can render reactively — the title update stays exactly as it was, this is
+// additive, not a replacement.
 export function startSaveSync(editor: Editor, canvasId: string): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null
   const save = async (opts?: { keepalive?: boolean }) => {
     document.title = '● gen_media'
+    useUiStore.getState().setSaveState('saving')
     const body = JSON.stringify(getSnapshot(editor.store))
     // keepalive lets the flush request survive page unload, but browsers
     // reject keepalive requests with bodies over ~64KB — fall back to a
@@ -29,8 +34,10 @@ export function startSaveSync(editor: Editor, canvasId: string): () => void {
         ...(useKeepalive ? { keepalive: true } : {}),
       })
       document.title = res.ok ? 'gen_media' : '⚠ gen_media (not saved)'
+      useUiStore.getState().setSaveState(res.ok ? 'saved' : 'error')
     } catch {
       document.title = '⚠ gen_media (not saved)'
+      useUiStore.getState().setSaveState('error')
     }
   }
   const unlisten = editor.store.listen(

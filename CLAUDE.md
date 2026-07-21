@@ -29,10 +29,12 @@ polishing what exists? If no — cut it or park it in "Later".
 ## Locked decisions
 
 - **UX**: Canvas-First. One continuous zoomable canvas (tldraw). Selection
-  shows an action menu + inspector. Region gestures happen by zooming into the
-  node (zoom-to-edit) — no modals, no modes. See `docs/design/ux-directions.html`.
+  drives the bottom command bar (v2 chrome, see below — superseded the old
+  on-node action menu + right-side inspector). Region gestures happen by
+  zooming into the node (zoom-to-edit) — no modals, no modes. See
+  `docs/design/ux-directions.html`.
 - **Ops (weekend scope)**: generate, edit (instruction, optional reference),
-  inpaint (rect region), upload (cut, see plan §self-review), crop, resize.
+  inpaint (rect region), upload (restored in v2 chrome via command bar), crop, resize.
   Multi-variant runs create pending sibling nodes; errors are retryable
   nodes. (Text overlay → stretch; displaced by shareable canvases
   2026-07-20.)

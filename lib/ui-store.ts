@@ -3,9 +3,17 @@ import type { RectFrac } from '@/lib/types'
 
 type Tool = null | 'edit' | 'inpaint' | 'crop' | 'resize' | 'vary'
 
+// v2 chrome (Task 14): mirrors save-sync.ts's title-bar dirty/error signal
+// as ui-store state so TopNav's save dot can render it reactively instead of
+// polling document.title. save-sync.ts sets this IN ADDITION to (not instead
+// of) the title updates — the title stays as a secondary, tab-visible signal.
+type SaveState = 'saved' | 'saving' | 'error'
+
 interface UiState {
   armedTool: Tool
   pickingRef: boolean
+  saveState: SaveState
+  setSaveState: (s: SaveState) => void
   // Ephemeral: the in-progress region rect drawn by CropOverlay OR
   // RegionOverlay (inpaint), as FRACTIONS (0..1) of the overlay's own
   // measured box — not a synthetic display-unit rect. Not persisted —
@@ -25,8 +33,10 @@ interface UiState {
 export const useUiStore = create<UiState>((set) => ({
   armedTool: null,
   pickingRef: false,
+  saveState: 'saved',
   cropFrac: null,
   setArmedTool: (armedTool) => set({ armedTool }),
   setPickingRef: (pickingRef) => set({ pickingRef }),
+  setSaveState: (saveState) => set({ saveState }),
   setCropFrac: (cropFrac) => set({ cropFrac }),
 }))

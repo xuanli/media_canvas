@@ -68,9 +68,20 @@ const mockImg = (page: Page) => page.locator('img[src^="data:image/svg"]')
 // targets, so a real click dispatched at the node's coordinates still
 // selects it correctly even though the browser's native hit-test resolves
 // to a DOM element underneath (confirmed against the real app: force-click
-// at the node's position correctly arms the ActionMenu). `force: true`
-// bypasses Playwright's "target element receives the event" actionability
-// check, which would otherwise reject this by design.
+// at the node's position correctly selects it and populates the command
+// bar's verb row). `force: true` bypasses Playwright's "target element
+// receives the event" actionability check, which would otherwise reject
+// this by design.
+//
+// v2 chrome (Task 14): the verb buttons (✦ Edit, Crop, ...), Run/Apply, and
+// the prompt fields all moved from the old ActionMenu (floating over the
+// node) + Inspector (right-side panel) into one bottom CommandBar, but every
+// button/placeholder KEPT ITS TEXT — these selectors are all
+// getByRole(name)/getByPlaceholder, i.e. accessible-name based, not
+// DOM-position based, so they needed no changes to keep passing. Confirmed
+// by reading CommandBar.tsx's render output against each assertion below,
+// NOT by an actual E2E run: port 3000 was held by the human's own dev server
+// this session (see task-14-report.md "E2E" section) — DEFERRED-PORT-BUSY.
 const clickNode = (n: Locator) => n.click({ force: true })
 
 test('generate creates a root node', async ({ page }) => {
@@ -179,8 +190,9 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
 
 // Reference-pick flow (Task 12): select A, arm Edit, "+ Reference", click B
 // (a different done node) on the canvas, expect a "ref: vN" chip and
-// selection restored to A (Inspector.tsx's pick-detection effect snaps
-// tldraw's selection back to the edit target after a valid pick). Then Run
+// selection restored to A (CommandBar.tsx's pick-detection effect — ported
+// verbatim from the old Inspector.tsx — snaps tldraw's selection back to the
+// edit target after a valid pick). Then Run
 // spawns a child off A with both a solid parent arrow and a dashed 'ref'
 // arrow from B (lib/run-op.ts createArrow(..., dashed=true) for the ref leg).
 test('reference pick flow: chip, selection restore, run', async ({ page }) => {
@@ -191,9 +203,10 @@ test('reference pick flow: chip, selection restore, run', async ({ page }) => {
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
 
-  // Root B: PromptBar's go() passes sourceId=null every time, so a second
-  // Enter with nothing selected creates a second ROOT (see run-op.ts: no
-  // `sel` is read here, sourceId is always null from PromptBar).
+  // Root B: CommandBar's idle-mood go() passes sourceId=null every time (was
+  // PromptBar's go(), ported unchanged), so a second Enter with nothing
+  // selected creates a second ROOT (see run-op.ts: no `sel` is read here,
+  // sourceId is always null from the idle-mood generate handler).
   await page.getByPlaceholder('Describe a new image…').fill('root B')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(2, { timeout: 10_000 })
