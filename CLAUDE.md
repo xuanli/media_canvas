@@ -92,8 +92,10 @@ polishing what exists? If no — cut it or park it in "Later".
   `props.richText` via `toRichText()` (NOT `props.text`); arrow bindings use
   `editor.createBinding({ type:'arrow', fromId, toId, props:{ terminal:'start'|'end' } })`
   and arrows track shape moves automatically (ArrowBindingUtil is in
-  `defaultBindingUtils`); `stopEventPropagation(e)` on an overlay's
-  `onPointerDown` blocks canvas pan. NOTE on verification tiers: the two
+  `defaultBindingUtils`); CORRECTION (Task 10): `stopEventPropagation` is NOT
+  re-exported from the `tldraw` package (only `@tldraw/editor`, not a direct
+  dep) — use plain `e.stopPropagation()` on an overlay's `onPointerDown` to
+  block canvas pan (equivalent; it's what the helper does internally). NOTE on verification tiers: the two
   interactive checks (overlay-pan-suppression, arrow-follows-drag) AND the
   CORS `toDataURL()` behavior were verified by API-contract/headers only —
   NOT exercised in a live browser (no browser/Playwright at spike time; CORS
