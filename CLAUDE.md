@@ -28,13 +28,14 @@ polishing what exists? If no — cut it or park it in "Later".
 
 ## Locked decisions
 
-- **UX**: Canvas-First. One continuous zoomable canvas (React Flow). Selection
+- **UX**: Canvas-First. One continuous zoomable canvas (tldraw). Selection
   shows an action menu + inspector. Region gestures happen by zooming into the
   node (zoom-to-edit) — no modals, no modes. See `docs/design/ux-directions.html`.
 - **Ops (weekend scope)**: generate, edit (instruction, optional reference),
-  inpaint (rect region), upload, crop, resize. Multi-variant runs create
-  pending sibling nodes; errors are retryable nodes. (Text overlay → stretch;
-  displaced by shareable canvases 2026-07-20.)
+  inpaint (rect region), upload (cut, see plan §self-review), crop, resize.
+  Multi-variant runs create pending sibling nodes; errors are retryable
+  nodes. (Text overlay → stretch; displaced by shareable canvases
+  2026-07-20.)
 - **V2 chrome (user decision 2026-07-21, post-v0.1)**: slim top nav (recent-canvas
   switcher client-side, new/share-link/export, save dot) + ONE centered bottom
   command bar replacing PromptBar/Inspector/ActionMenu — "Bar B": idle =
@@ -71,8 +72,9 @@ polishing what exists? If no — cut it or park it in "Later".
 - **Stack**: Next.js (deployable to Vercel), **tldraw** canvas (user decision
   2026-07-20; chosen for canvas feel + free undo/redo/persistence + freehand
   brush path later). tldraw store is the single source of truth — versions are
-  custom shapes with op meta, edges are bound labeled arrows, persistence via
-  `persistenceKey`. Zustand only for ephemeral UI state. Thin `/api/ops` +
+  custom shapes with op meta, edges are bound labeled arrows, storage per
+  the canvas-as-URL decision above (no persistenceKey). Zustand only for
+  ephemeral UI state. Thin `/api/ops` +
   `/api/upload` routes proxying fal (key stays server-side). Minimap cut.
   Fallback if the Saturday 2-hr tldraw spike fails: React Flow as originally
   designed (see spec §4 history).

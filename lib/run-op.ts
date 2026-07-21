@@ -161,11 +161,24 @@ export function retryShape(
   const parent = s.props.sourceId
     ? nodes(editor).find((n) => n.id === s.props.sourceId)
     : undefined
-  editor.updateShape<ImageNodeShape>({
-    id: shapeId,
-    type: 'image-node',
-    props: { status: 'pending', errorMessage: undefined, errorCode: undefined },
-  })
+  // history: 'ignore' (verified against the installed tldraw 5.2.5 types —
+  // Editor.run(fn, opts: TLEditorRunOptions extends TLHistoryBatchOptions,
+  // history?: 'ignore'|'record-preserveRedoStack'|'record') — keeps this
+  // status reset off the undo stack. Fix round 2 (human-reported): without
+  // this, Cmd-Z right after a result lands would revert 'done'/'error' back
+  // to 'pending', reviving a spinner for a request that already finished —
+  // undoing should remove the node outright (tldraw's default create-undo),
+  // not resurrect a dead one.
+  editor.run(
+    () => {
+      editor.updateShape<ImageNodeShape>({
+        id: shapeId,
+        type: 'image-node',
+        props: { status: 'pending', errorMessage: undefined, errorCode: undefined },
+      })
+    },
+    { history: 'ignore' }
+  )
   void dispatch(editor, shapeId, s.props.op, parent?.props.assetUrl, resolveRef)
 }
 
@@ -176,18 +189,30 @@ async function dispatch(
   parentUrl: string | undefined,
   resolveRef: (id: string) => string | undefined
 ): Promise<void> {
+  // Fix round 2 (human-reported, applies to done/fail/the dims backfill
+  // below): all three are pending->settled status transitions on a node
+  // that already exists (created, with its own undo entry, back in runOp).
+  // Wrapped in `editor.run(fn, { history: 'ignore' })` so they don't ALSO
+  // push undo entries — otherwise Cmd-Z right after a result lands reverts
+  // 'done'/'error' back to 'pending' (a dead spinner) instead of undoing the
+  // node's creation outright.
   const done = (r: OpsResponse) => {
-    editor.updateShape<ImageNodeShape>({
-      id: shapeId,
-      type: 'image-node',
-      props: {
-        status: 'done',
-        assetUrl: r.imageUrl,
-        naturalW: r.width,
-        naturalH: r.height,
-        h: r.width ? Math.round(IMAGE_NODE_W * (r.height / r.width)) + 18 : 150,
+    editor.run(
+      () => {
+        editor.updateShape<ImageNodeShape>({
+          id: shapeId,
+          type: 'image-node',
+          props: {
+            status: 'done',
+            assetUrl: r.imageUrl,
+            naturalW: r.width,
+            naturalH: r.height,
+            h: r.width ? Math.round(IMAGE_NODE_W * (r.height / r.width)) + 18 : 150,
+          },
+        })
       },
-    })
+      { history: 'ignore' }
+    )
     // Fix round 1 (task-12-report.md, Finding 5 — pre-existing,
     // controller-mandated): some capabilities (observed: nano-banana edit)
     // return width/height=0 in the ops response even though the image
@@ -213,15 +238,20 @@ async function dispatch(
         const w = img.naturalWidth
         const h = img.naturalHeight
         if (!w || !h) return
-        editor.updateShape<ImageNodeShape>({
-          id: shapeId,
-          type: 'image-node',
-          props: {
-            naturalW: w,
-            naturalH: h,
-            h: Math.round(IMAGE_NODE_W * (h / w)) + 18,
+        editor.run(
+          () => {
+            editor.updateShape<ImageNodeShape>({
+              id: shapeId,
+              type: 'image-node',
+              props: {
+                naturalW: w,
+                naturalH: h,
+                h: Math.round(IMAGE_NODE_W * (h / w)) + 18,
+              },
+            })
           },
-        })
+          { history: 'ignore' }
+        )
       }
       // On error, leave the fallback values (naturalW/H=0, display h=150)
       // in place — there's no better dimension source, and the image
@@ -230,15 +260,20 @@ async function dispatch(
     }
   }
   const fail = (e: unknown) =>
-    editor.updateShape<ImageNodeShape>({
-      id: shapeId,
-      type: 'image-node',
-      props: {
-        status: 'error',
-        errorCode: (e as { code?: string })?.code ?? 'error',
-        errorMessage: e instanceof Error ? e.message : 'Something went wrong.',
+    editor.run(
+      () => {
+        editor.updateShape<ImageNodeShape>({
+          id: shapeId,
+          type: 'image-node',
+          props: {
+            status: 'error',
+            errorCode: (e as { code?: string })?.code ?? 'error',
+            errorMessage: e instanceof Error ? e.message : 'Something went wrong.',
+          },
+        })
       },
-    })
+      { history: 'ignore' }
+    )
   try {
     switch (op.type) {
       case 'generate': {

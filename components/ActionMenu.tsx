@@ -29,11 +29,20 @@ export function ActionMenu() {
       const b = editor.getShapePageBounds(s.id)
       if (!b) return null
       const p = editor.pageToScreen({ x: b.x, y: b.y })
-      return { id: s.id, x: p.x, y: p.y }
+      return { id: s.id, x: p.x, y: p.y, status: s.props.status }
     },
     [editor]
   )
   if (!sel) return null
+  // Cleanup (whole-branch review): Crop/Resize/✦ Inpaint all arm an overlay
+  // that operates on the selected node's *rendered image* — arming them
+  // against a 'pending' or 'error' node (no image to draw the overlay over)
+  // let you enter a broken state. ✦ Edit/✦ Vary are left ungated: both are
+  // model calls that dispatch off the node's assetUrl at generate time
+  // (edit even accepts a not-yet-resolved reference elsewhere), not an
+  // immediate on-image overlay, so there's nothing to visually break by
+  // arming them early.
+  const gatedTools = new Set(['crop', 'resize', 'inpaint'])
   return (
     <div
       style={{
@@ -49,23 +58,29 @@ export function ActionMenu() {
         padding: 3,
       }}
     >
-      {VERBS.map(([tool, label]) => (
-        <button
-          key={tool}
-          onClick={() => setArmedTool(armedTool === tool ? null : tool)}
-          style={{
-            background: armedTool === tool ? '#2dd4bf' : 'transparent',
-            color: armedTool === tool ? '#0b2622' : '#dfe5ec',
-            border: 0,
-            borderRadius: 4,
-            fontSize: 11,
-            padding: '3px 8px',
-            cursor: 'pointer',
-          }}
-        >
-          {label}
-        </button>
-      ))}
+      {VERBS.map(([tool, label]) => {
+        const disabled = gatedTools.has(tool) && sel.status !== 'done'
+        return (
+          <button
+            key={tool}
+            disabled={disabled}
+            title={disabled ? 'waiting for image' : undefined}
+            onClick={() => !disabled && setArmedTool(armedTool === tool ? null : tool)}
+            style={{
+              background: armedTool === tool ? '#2dd4bf' : 'transparent',
+              color: armedTool === tool ? '#0b2622' : disabled ? '#5b6472' : '#dfe5ec',
+              border: 0,
+              borderRadius: 4,
+              fontSize: 11,
+              padding: '3px 8px',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
+            {label}
+          </button>
+        )
+      })}
     </div>
   )
 }

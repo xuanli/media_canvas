@@ -3,7 +3,7 @@
 import { Tldraw, getSnapshot, loadSnapshot, useEditor, useValue, type Editor, type TLShapeId } from 'tldraw'
 import 'tldraw/tldraw.css'
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
-import { ImageNodeUtil } from '@/components/ImageNodeShape'
+import { ImageNodeUtil, type ImageNodeShape } from '@/components/ImageNodeShape'
 import { PromptBar } from '@/components/PromptBar'
 import { ActionMenu } from '@/components/ActionMenu'
 import { Inspector } from '@/components/Inspector'
@@ -11,6 +11,29 @@ import { PasscodeGate } from '@/components/PasscodeGate'
 import { retryShape } from '@/lib/run-op'
 import { startSaveSync } from '@/lib/save-sync'
 import { useUiStore } from '@/lib/ui-store'
+
+// Bug fix (human-reported): a snapshot can capture an image-node mid-flight
+// (status 'pending') if the tab was closed, refreshed, or crashed while a
+// generate/edit/inpaint call was still in the air — the fetch that would
+// eventually resolve that node belonged to the PREVIOUS page load and is
+// gone. Loading that snapshot back (on mount, or via Import JSON) would
+// otherwise show a spinner that never resolves. Sweep every such node to
+// 'error' immediately after a snapshot loads so the existing Retry button +
+// op-as-recipe (the op that would produce the node lives ON the node) can
+// recover it — same recovery path as any other failed op.
+function sweepInterruptedNodes(editor: Editor): void {
+  const stuck = editor
+    .getCurrentPageShapes()
+    .filter((s): s is ImageNodeShape => s.type === 'image-node' && s.props.status === 'pending')
+  if (stuck.length === 0) return
+  editor.updateShapes<ImageNodeShape>(
+    stuck.map((s) => ({
+      id: s.id,
+      type: 'image-node',
+      props: { status: 'error', errorCode: 'interrupted', errorMessage: 'Interrupted — press Retry' },
+    }))
+  )
+}
 
 export function CanvasApp({ canvasId }: { canvasId: string }) {
   const editorRef = useRef<Editor | null>(null)
@@ -23,6 +46,15 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
   const onMount = useCallback(
     (editor: Editor) => {
       editorRef.current = editor
+      // Force dark mode (human-reported: canvas was rendering tldraw's light
+      // theme, clashing with the rest of the app's dark chrome).
+      // `editor.user.updateUserPreferences` is the documented source of
+      // truth for the color-mode preference (5.2.5 TLUserPreferences.
+      // colorScheme: 'dark'|'light'|'system' — verified in the installed
+      // @tldraw/editor types); setting it here always wins over the OS
+      // theme, unlike a `system`-following prop. Set synchronously so the
+      // first paint is already dark, not just after the snapshot fetch.
+      editor.user.updateUserPreferences({ colorScheme: 'dark' })
       let stopSaveSync: (() => void) | null = null
       let cancelled = false
       void (async () => {
@@ -31,6 +63,7 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
           if (res.ok) {
             const snapshot = await res.json()
             loadSnapshot(editor.store, snapshot)
+            sweepInterruptedNodes(editor)
           }
         } catch {
           // Network error: fall through and start empty, same as a 404.
@@ -89,7 +122,12 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
             verified in node_modules @tldraw/editor TldrawBaseProps) — our own
             verb UI (PromptBar now, node action menu in later tasks) replaces
             it. */}
-        <Tldraw shapeUtils={[ImageNodeUtil]} onMount={onMount} hideUi>
+        <Tldraw
+          shapeUtils={[ImageNodeUtil]}
+          onMount={onMount}
+          hideUi
+          licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
+        >
           <PromptBar />
           <ActionMenu />
           <Inspector />
@@ -157,6 +195,7 @@ function TopBar() {
     try {
       const snapshot = JSON.parse(await file.text())
       loadSnapshot(editor.store, snapshot)
+      sweepInterruptedNodes(editor)
       setImportError(null)
     } catch {
       setImportError('Import failed: not a valid canvas file')

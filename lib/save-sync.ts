@@ -16,13 +16,22 @@ export function startSaveSync(editor: Editor, canvasId: string): () => void {
     // plain fetch for large snapshots (e.g. carrying unsynced data URLs)
     // rather than have the browser silently drop the whole request.
     const useKeepalive = Boolean(opts?.keepalive) && body.length <= 60_000
-    const res = await fetch(`/api/canvas/${canvasId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'x-gm-passcode': getPasscode() },
-      body,
-      ...(useKeepalive ? { keepalive: true } : {}),
-    })
-    document.title = res.ok ? 'gen_media' : '⚠ gen_media (not saved)'
+    // Fix round 2 (whole-branch review): a rejected fetch (offline, DNS
+    // failure, CORS, an aborted keepalive request) previously threw out of
+    // this async function uncaught — no title update, so a failed save
+    // looked identical to a save still in flight. Catch it and surface the
+    // same "not saved" title the non-ok-response branch already used below.
+    try {
+      const res = await fetch(`/api/canvas/${canvasId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-gm-passcode': getPasscode() },
+        body,
+        ...(useKeepalive ? { keepalive: true } : {}),
+      })
+      document.title = res.ok ? 'gen_media' : '⚠ gen_media (not saved)'
+    } catch {
+      document.title = '⚠ gen_media (not saved)'
+    }
   }
   const unlisten = editor.store.listen(
     () => {

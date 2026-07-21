@@ -19,10 +19,11 @@ build history live in `docs/` and this repo's git log (see
    answers this with a Canvas-First branching tree: every generation and
    edit is a node, every retry is a sibling, and you can zoom into any
    point in the history and branch from there.
-3. **Deterministic edits shouldn't need a model** — crop, resize, and text
-   placement don't need a diffusion call, but chat tools give you no
-   toolbelt. `gen_media` answers this with instant, client-side deterministic
-   ops that create nodes immediately, no model round-trip.
+3. **Deterministic edits shouldn't need a model** — crop and resize don't
+   need a diffusion call, but chat tools give you no toolbelt. `gen_media`
+   answers this with instant, client-side deterministic ops that create
+   nodes immediately, no model round-trip. (Text overlay was scoped in here
+   too but is parked — see "Explicitly OUT of weekend scope" in `CLAUDE.md`.)
 
 ## Quickstart
 
@@ -62,7 +63,7 @@ Fill in `.env.local` from `.env.example`:
 ### Tests
 
 ```bash
-pnpm test        # unit tests — pure logic (tree, geometry, schemas, errors)
+pnpm test        # unit tests — pure logic (tree, schemas, errors)
 pnpm test:e2e     # Playwright, fully mocked, zero-console-error assertions
 ```
 
@@ -145,9 +146,8 @@ overlay).
 
 ## Testing story
 
-- **Unit** (`pnpm test`, Vitest): pure logic — tree traversal, crop/resize
-  geometry, zod schema validation, fal error normalization.
-  `lib/__tests__/*.test.ts`.
+- **Unit** (`pnpm test`, Vitest): pure logic — tree traversal, zod schema
+  validation, fal error normalization. `lib/__tests__/*.test.ts`.
 - **Mocked E2E** (`pnpm test:e2e`, Playwright): the demo path exercised in a
   real browser against `FAL_MOCK=1 STORAGE_MOCK=1` — generate, edit-spawns-
   variants-with-arrows, reload persistence, a real pointer-drag crop, and
@@ -161,8 +161,11 @@ overlay).
 ## AI-collaboration
 
 Built with Claude Code end-to-end (spec → plan → task-by-task
-implementation → this README). The full decision trail — spec discussion,
-locked decisions, self-review notes, per-task briefs/reports, and code
-review diffs — is kept in `docs/superpowers/`, `.superpowers/sdd/`, and the
-git history, per the assignment's request to show how AI tools were
-directed and evaluated rather than just the final diff.
+implementation → this README). The full decision trail lives in
+`docs/superpowers/`: the [design spec](docs/superpowers/specs/2026-07-20-gen-media-design.md)
+(problem framing, locked decisions), the [implementation plan](docs/superpowers/plans/2026-07-20-gen-media.md)
+(task breakdown), and the [execution ledger](docs/superpowers/progress-ledger.md)
+(task-by-task record of the subagent build, reviews, and adjudications) —
+plus the git history itself (per-task commits, review/fix-round commits),
+per the assignment's request to show how AI tools were directed and
+evaluated rather than just the final diff.

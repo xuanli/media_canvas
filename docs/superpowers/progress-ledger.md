@@ -29,3 +29,43 @@ Task 12: complete (commits 8f55378+217cf75; review approved after 5-finding fix 
 Task 12b: complete (commits dee9188+25420be+466d9df+3dab7b8; 5/5 specs stable; 3 fix rounds on error-filter design — final design: console noise ignored, canvas health asserted from response log, PROVEN live via negative check)
   Review-loop note: rounds 1-2 rejected for correlation race / non-consuming excuse / dead snapshot — good catch chain, record for submission narrative
 Task 13: complete (commit 8459141, tag v0.1; DEPLOYED https://genmedia-theta.vercel.app; all prod checks green incl. fail-closed 401 + blob round-trip + real generate; task-review folded into final whole-branch review)
+
+Final fix wave (2026-07-21): complete (single commit "fix: interrupted-node
+recovery, undo semantics, dark canvas, doc drift, cleanup"). Pre-submission
+fixes from the whole-branch review + one human-reported bug:
+  1. Stuck-pending recovery: sweepInterruptedNodes(editor) helper swept after
+     both loadSnapshot call sites (mount + import) in CanvasApp.tsx — pending
+     nodes orphaned by a dead page-load become retryable error nodes instead
+     of dead spinners.
+  2. Undo semantics: done()/fail()/dims-backfill/retryShape status updates in
+     lib/run-op.ts wrapped in editor.run(fn, { history: 'ignore' }) (verified
+     against installed tldraw 5.2.5 @tldraw/editor types — TLEditorRunOptions
+     extends TLHistoryBatchOptions) so Cmd-Z after a result removes the node
+     instead of reverting it to a dead pending spinner.
+  3. README dead path: .superpowers/sdd/progress.md copied verbatim to this
+     file (docs/superpowers/progress-ledger.md) with a header line; README's
+     AI-collaboration section now points at docs/superpowers/ + git history.
+  4. Stale doc lines fixed: CLAUDE.md "(React Flow)"->"(tldraw)", the
+     persistenceKey clause rewritten to the canvas-as-URL decision, upload op
+     marked cut; design spec's persistenceKey sentence annotated superseded;
+     README's text-placement claim under pain point 3 corrected (parked, not
+     shipped); README/verify.md geometry test claims fixed post-deletion.
+  5. Human-reported bug: canvas forced to dark mode via
+     editor.user.updateUserPreferences({ colorScheme: 'dark' }) in onMount
+     (verified against TLUserPreferences types; inferDarkMode does not exist
+     in the installed 5.2.5 props).
+  6. Minor: "not synced" corner badge on done+unsynced nodes in
+     ImageNodeShape.tsx, tooltip only, no retry wiring (YAGNI per spec).
+  7. Minor: save-sync.ts's save() fetch wrapped in try/catch, sets the
+     '(not saved)' title on rejection same as the non-ok-response branch.
+  8. Cleanup: deleted dead lib/geometry.ts + its test (superseded by
+     RectFrac math) and 3 unused public/*.svg scaffold assets; corrected the
+     ImageNodeShape.tsx header comment's false BaseBoxShapeUtil claim per the
+     Task 7 note above; gated Crop/Resize/Inpaint arming in ActionMenu.tsx on
+     status==='done' (resolves the Task 10 deferred-minor above).
+  Gates: tsc --noEmit clean; pnpm test 13/13 passing across 3 files (down
+  from 16/4 — geometry.test.ts removed); eslint clean. E2E explicitly
+  deferred to the controller (human's dev server held port 3000).
+  Concerns for controller: undo-semantics (2) and dark-mode default (5) are
+  the two changes most worth a real-browser/E2E pass; full details in
+  .superpowers/sdd/task-13-report.md "## Final fix wave".

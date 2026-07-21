@@ -177,8 +177,9 @@ hand-built tree arrows, no minimap, license watermark, learning curve).
 - **Single source of truth = tldraw store.** Versions are custom
   `ImageNodeShape`s carrying the §3 `VersionNode` fields as validated props;
   tree helpers (childrenOf/recipeOf) read the editor store.
-  Persistence via `persistenceKey` snapshot. Undo/redo covers node ops for
-  free. Zustand holds only ephemeral UI state (armed tool, pick mode).
+  Persistence via `persistenceKey` snapshot. [superseded by §3 canvas-as-URL
+  storage decision] Undo/redo covers node ops for free. Zustand holds only
+  ephemeral UI state (armed tool, pick mode).
 - **Edges = bound arrow shapes** created programmatically on child spawn,
   labeled with the op type; bindings make them follow dragged nodes.
   Reference links are dashed arrows.

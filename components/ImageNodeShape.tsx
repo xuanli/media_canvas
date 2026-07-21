@@ -24,13 +24,16 @@ import { RegionOverlay } from '@/components/overlays/RegionOverlay'
  *  - Custom shape TYPES must be registered by augmenting `TLGlobalShapePropsMap`
  *    below, or `TLShape` stays a closed union and `ShapeUtil<ImageNodeShape>` /
  *    `editor.createShape<ImageNodeShape>` fail to typecheck.
- *  - `BaseBoxShapeUtil<S>` constrains `S extends TLBaseBoxShape`, an
- *    `Extract`-based union of the *built-in* box shapes; a custom shape does not
- *    satisfy it even after the augmentation above. We extend plain `ShapeUtil`
- *    instead and implement `getGeometry` (a `Rectangle2d`) + `getIndicatorPath`
- *    (a `Path2D`) ourselves — mirroring exactly what `BaseBoxShapeUtil` does
- *    internally — plus `onResize` via the exported `resizeBox` helper to keep
- *    box-resize UX working.
+ *  - CORRECTED (final review, see docs/superpowers/progress-ledger.md Task 7 note):
+ *    the original claim here — that `BaseBoxShapeUtil<S>`'s `S extends
+ *    TLBaseBoxShape` constraint rejects a custom shape even after the
+ *    `TLGlobalShapePropsMap` augmentation above — is false. It DOES compile
+ *    once `getIndicatorPath()` replaces the deprecated `indicator()` stub.
+ *    We still extend plain `ShapeUtil` here and implement `getGeometry` (a
+ *    `Rectangle2d`) + `getIndicatorPath` (a `Path2D`) ourselves — mirroring
+ *    what `BaseBoxShapeUtil` does internally, plus `onResize` via the
+ *    exported `resizeBox` helper — but that's a style choice (explicit over
+ *    inherited), not a typechecking requirement.
  *  - The old JSX `indicator()` method is a deprecated legacy stub; the real hook
  *    is `getIndicatorPath()`.
  *  - `T.literalEnum(...)`, `T.number.optional()`, `T.string.nullable()` are
@@ -190,6 +193,31 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
     >
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {p.status === 'done' && <AssetView props={p} />}
+        {p.status === 'done' && p.errorCode === 'unsynced' && (
+          // Minor (spec-promised, YAGNI-scoped): badge only, no retry
+          // wiring — the node is already usable (the local dataURL keeps
+          // rendering fine), this just flags that its assetUrl isn't a
+          // durable CDN URL yet, e.g. if the background /api/upload in
+          // runInstantOp failed.
+          <div
+            title="CDN sync failed — image is local to this browser"
+            style={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              background: '#3a2a14',
+              color: '#e0a95c',
+              border: '1px solid #6a4a20',
+              borderRadius: 4,
+              fontSize: 9,
+              padding: '1px 5px',
+              pointerEvents: 'all',
+              cursor: 'default',
+            }}
+          >
+            not synced
+          </div>
+        )}
         {p.status === 'pending' && (
           <div
             style={{
