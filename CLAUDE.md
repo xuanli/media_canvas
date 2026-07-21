@@ -104,8 +104,8 @@ polishing what exists? If no — cut it or park it in "Later".
 - **Live API verification 2026-07-20 (post-credits)**: `generate`
   (flux-pro/v1.1) and `edit` (nano-banana/edit) confirmed with real 200
   responses end-to-end (generate → edit chain on a real image). `inpaint`
-  (flux-pro/v1/fill) remains schema-verified only until Task 11 exercises it
-  with a real mask.
+  (flux-pro/v1/fill) live-verified 2026-07-21 during Task 11: real mask,
+  edit confined to masked region, visually confirmed.
 
 ## Explicitly OUT of weekend scope (parked in "Later")
 
