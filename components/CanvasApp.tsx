@@ -2,7 +2,7 @@
 
 import { Tldraw, getSnapshot, loadSnapshot, useEditor, useValue, type Editor, type TLShapeId } from 'tldraw'
 import 'tldraw/tldraw.css'
-import { useCallback, useEffect, useRef, type ChangeEvent, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
 import { ImageNodeUtil } from '@/components/ImageNodeShape'
 import { PromptBar } from '@/components/PromptBar'
 import { ActionMenu } from '@/components/ActionMenu'
@@ -120,6 +120,20 @@ const topBarBtn: CSSProperties = {
 function TopBar() {
   const editor = useEditor()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Fix round 1 (task-12-report.md, Finding 4): the import catch used to be
+  // a silent no-op, so a malformed/non-canvas file gave zero feedback. Now
+  // surfaced as a small inline banner under the bar; it clears on the next
+  // successful import (see onImportChange's try branch) or on its own after
+  // a few seconds, via the ref-tracked timer below (cleared/reset on
+  // unmount and on each new import attempt so timers don't stack).
+  const [importError, setImportError] = useState<string | null>(null)
+  const importErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (importErrorTimerRef.current) clearTimeout(importErrorTimerRef.current)
+    }
+  }, [])
 
   const onExport = () => {
     const snapshot = getSnapshot(editor.store)
@@ -136,30 +150,64 @@ function TopBar() {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-importing the same filename twice in a row
     if (!file) return
+    if (importErrorTimerRef.current) {
+      clearTimeout(importErrorTimerRef.current)
+      importErrorTimerRef.current = null
+    }
     try {
       const snapshot = JSON.parse(await file.text())
       loadSnapshot(editor.store, snapshot)
+      setImportError(null)
     } catch {
-      // Best-effort polish item: a malformed/non-canvas JSON file is a
-      // silent no-op rather than a crash.
+      setImportError('Import failed: not a valid canvas file')
+      importErrorTimerRef.current = setTimeout(() => setImportError(null), 4000)
     }
   }
 
   return (
-    <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 6 }}>
-      <button onClick={onExport} style={topBarBtn}>
-        Export JSON
-      </button>
-      <button onClick={() => fileInputRef.current?.click()} style={topBarBtn}>
-        Import JSON
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json"
-        onChange={(e) => void onImportChange(e)}
-        style={{ display: 'none' }}
-      />
+    <div
+      style={{
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        zIndex: 300,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 6,
+      }}
+    >
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={onExport} style={topBarBtn}>
+          Export JSON
+        </button>
+        <button onClick={() => fileInputRef.current?.click()} style={topBarBtn}>
+          Import JSON
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          onChange={(e) => void onImportChange(e)}
+          style={{ display: 'none' }}
+        />
+      </div>
+      {importError && (
+        <div
+          style={{
+            background: '#2a1414',
+            color: '#ff9c9c',
+            border: '1px solid #5a2a2a',
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontSize: 11,
+            maxWidth: 220,
+            textAlign: 'right',
+          }}
+        >
+          {importError}
+        </div>
+      )}
     </div>
   )
 }

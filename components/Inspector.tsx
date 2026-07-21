@@ -169,52 +169,75 @@ export function Inspector() {
   // stale rect drawn on a previously-selected node doesn't ghost onto the
   // next one (cropFrac is global ui-store state, not per-shape).
   //
-  // Reference-pick interplay (Task 12): the pick flow *also* changes
-  // selection twice in a row — once to the picked node (so the user can
-  // click it), then back to the original edit target (so the form doesn't
-  // visually jump to a different node's context) — and this effect's own
-  // job is to fire exactly on that kind of change. Two refs coordinate the
-  // two flows so they don't fight:
-  //  - `editTargetIdRef` remembers which node "+ Reference" was clicked on,
-  //    so the pick-detection branch below knows what counts as "a different
-  //    node got picked" vs. "selection returned to where it started".
-  //  - `skipNextResetRef` is armed by the pick-detection branch the instant
-  //    it calls `editor.select(targetId)` to restore selection, so the
-  //    *next* run of this effect (fired by that very selId change back to
-  //    the target) is swallowed instead of wiping the prompt/model/variants
-  //    the user had already typed. Without it, "pick a ref" would silently
-  //    clear the edit form the user was filling in — selId changes A->B
-  //    (picked) are already skipped outright by the `if (pickingRef)`
-  //    early-return below, but the second change B->A (restore) happens
-  //    *after* pickingRef has already flipped back to false, so the
-  //    early-return can't catch it; skipNextResetRef is what does.
+  // Fix round 1 (task-12-report.md, Finding 1 + 2): the rule is
+  // SELECTION-DRIVEN, not pick-flag-driven. The form resets if and only if
+  // `selId` genuinely changed since this effect last looked at it AND that
+  // change wasn't caused by this effect's own pick-flow bookkeeping. This
+  // replaces a prior version that reset unconditionally whenever pickingRef
+  // was false, which wiped the form on an Esc-cancelled pick (selection
+  // never moved, but pickingRef flipping false alone triggered a reset).
+  //
+  // Three refs:
+  //  - `editTargetIdRef` — the node "+ Reference" was clicked on (armed in
+  //    `startPick`). Used to tell "a different node got picked/attempted"
+  //    apart from "selection is still/again the edit target".
+  //  - `prevSelIdRef` — the selId this effect last observed, kept in sync on
+  //    every run (including while picking). This is what makes the rule
+  //    selection-driven: a run where `selId === prevSelIdRef.current` never
+  //    resets, regardless of why the effect re-ran (e.g. pickingRef toggled
+  //    with no selection change, as on Esc-cancel).
+  //  - `restoringRef` — armed the instant this effect calls
+  //    `editor.select(targetId)` itself (a *programmatic* restore, either
+  //    after a successful pick or after an invalid pick target). The very
+  //    next run — fired by that restore's own selId change landing — is
+  //    swallowed so it can't be mistaken for a genuine user selection change.
+  //
+  // Pick-detection (only while pickingRef is true): a selId change away from
+  // the edit target is either a valid pick (a *done* node — capture it as
+  // refId, disarm pickingRef) or an invalid one (pending/error, or
+  // defensively the edit target itself — Finding 2: previously this left
+  // tldraw's selection sitting on the invalid node, silently retargeting the
+  // panel/dispatch). Either way we restore selection back to the edit target
+  // and arm `restoringRef`; on an invalid target pickingRef stays true so the
+  // user can try again.
   const selId = sel?.id ?? null
   const editTargetIdRef = useRef<TLShapeId | null>(null)
-  const skipNextResetRef = useRef(false)
+  const prevSelIdRef = useRef<TLShapeId | null>(selId)
+  const restoringRef = useRef(false)
   useEffect(() => {
     if (pickingRef) {
-      // While armed, ignore all selection churn for reset purposes — the
-      // only thing that matters here is detecting the pick itself: the
-      // next *different*, done image-node that becomes selected.
       const targetId = editTargetIdRef.current
-      if (sel && targetId && sel.id !== targetId && sel.props.status === 'done') {
-        setRefId(sel.id)
-        skipNextResetRef.current = true
-        setPickingRef(false)
+      if (sel && targetId && sel.id !== targetId) {
+        if (sel.props.status === 'done') {
+          // This effect *is* the pick-detection subscription (reacting to
+          // tldraw selection, an external system), not a pure state mirror;
+          // see the resize-seed effect below for the same precedent.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setRefId(sel.id)
+          setPickingRef(false)
+        }
+        // Invalid target, or (defensively) the edit target re-selected:
+        // snap selection back and swallow the resulting selId churn.
+        restoringRef.current = true
         editor.select(targetId)
       }
+      prevSelIdRef.current = selId
       return
     }
-    if (skipNextResetRef.current) {
-      skipNextResetRef.current = false
+    if (restoringRef.current) {
+      restoringRef.current = false
+      prevSelIdRef.current = selId
       return
     }
-    setPrompt('')
-    setModel(EDIT_MODELS[0].id)
-    setVariants(1)
-    setPreset('free')
-    setCropFrac(null)
-    setRefId(null)
+    if (selId !== prevSelIdRef.current) {
+      setPrompt('')
+      setModel(EDIT_MODELS[0].id)
+      setVariants(1)
+      setPreset('free')
+      setCropFrac(null)
+      setRefId(null)
+    }
+    prevSelIdRef.current = selId
   }, [selId, pickingRef, sel, editor, setCropFrac, setPickingRef])
 
   // Clear the drawn region rect and any in-progress prompt on EVERY armedTool

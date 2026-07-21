@@ -86,7 +86,13 @@ export function runOp(
       },
     })
     if (parent) createArrow(editor, parent.id, id, op.type)
-    if (refFromId) createArrow(editor, refFromId, id, 'ref', /* dashed */ true)
+    // Fix round 1 (task-12-report.md, Finding 3): refFromId is captured at
+    // pick time and this loop can run some time later (async dispatch below
+    // hasn't even started yet, but variants>1 already stretches this out) —
+    // guard against the picked node having been deleted in between, which
+    // would otherwise create an arrow bound to nothing (an unbound, dangling
+    // 'ref' arrow rather than a real error).
+    if (refFromId && editor.getShape(refFromId)) createArrow(editor, refFromId, id, 'ref', /* dashed */ true)
     void dispatch(editor, id, op, parent?.props.assetUrl, resolveRef)
   }
 }
@@ -170,7 +176,7 @@ async function dispatch(
   parentUrl: string | undefined,
   resolveRef: (id: string) => string | undefined
 ): Promise<void> {
-  const done = (r: OpsResponse) =>
+  const done = (r: OpsResponse) => {
     editor.updateShape<ImageNodeShape>({
       id: shapeId,
       type: 'image-node',
@@ -182,6 +188,47 @@ async function dispatch(
         h: r.width ? Math.round(IMAGE_NODE_W * (r.height / r.width)) + 18 : 150,
       },
     })
+    // Fix round 1 (task-12-report.md, Finding 5 — pre-existing,
+    // controller-mandated): some capabilities (observed: nano-banana edit)
+    // return width/height=0 in the ops response even though the image
+    // itself is fine, which left naturalW/H at 0 and h pinned at the 150
+    // fallback forever — breaking the fraction->natural-px math that later
+    // crop/inpaint on this node depends on. The optimistic update above
+    // already shows the image immediately with status:'done', so this is a
+    // non-blocking backfill: measure the real dimensions client-side and
+    // patch them in once the image loads. run-op.ts is client-only
+    // (imported only by 'use client' components — Inspector.tsx,
+    // PromptBar.tsx, ActionMenu.tsx, CanvasApp.tsx), so the `Image` DOM
+    // constructor is always available here; no SSR guard needed.
+    if (!r.width || !r.height) {
+      const img = new Image()
+      // Same crossOrigin as AssetView's <img> (ImageNodeShape.tsx) — fal's
+      // CDN allows it, and it keeps this consistent with the canvas-safe
+      // loading pattern used elsewhere, though it's not load-bearing here
+      // since we only read naturalWidth/Height, not pixel data.
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        // The node may have been deleted while the image was loading.
+        if (!editor.getShape(shapeId)) return
+        const w = img.naturalWidth
+        const h = img.naturalHeight
+        if (!w || !h) return
+        editor.updateShape<ImageNodeShape>({
+          id: shapeId,
+          type: 'image-node',
+          props: {
+            naturalW: w,
+            naturalH: h,
+            h: Math.round(IMAGE_NODE_W * (h / w)) + 18,
+          },
+        })
+      }
+      // On error, leave the fallback values (naturalW/H=0, display h=150)
+      // in place — there's no better dimension source, and the image
+      // itself already renders fine via assetUrl above.
+      img.src = r.imageUrl
+    }
+  }
   const fail = (e: unknown) =>
     editor.updateShape<ImageNodeShape>({
       id: shapeId,
