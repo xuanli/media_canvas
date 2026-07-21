@@ -18,9 +18,11 @@ const EXPECTED_FRESH_CANVAS_404 = /\/api\/canvas\/[a-z0-9]{12}$/
 async function newCanvas(page: Page) {
   const errors: string[] = []
 
-  // Record responses for /api/canvas to enable response-correlated error filtering.
-  // Only console errors for GET 404 responses should be ignored; PUT failures and
-  // GET 500s must surface as test failures.
+  // Record all /api/canvas responses for network-truth validation.
+  // Console messages for /api/canvas are noise (expected mount 404s, React
+  // StrictMode double-logs, unordered event delivery); the response log is
+  // the source of truth for canvas API health and structurally catches save
+  // failures that a console-correlation filter could mask.
   const canvasResponses: Array<{ url: string; method: string; status: number }> = []
   page.on('response', (res) => {
     if (res.url().includes('/api/canvas/')) {
@@ -35,18 +37,25 @@ async function newCanvas(page: Page) {
   page.on('console', (m) => {
     if (m.type() !== 'error') return
     const url = m.location().url
-    if (EXPECTED_FRESH_CANVAS_404.test(url)) {
-      // Ignore only if a recorded response exists with GET 404 (may be two for React StrictMode).
-      const response = canvasResponses.find((r) => r.url === url && r.method === 'GET' && r.status === 404)
-      if (response) return
-    }
+    // Unconditionally ignore console errors from /api/canvas requests;
+    // the response handler validates actual API health.
+    if (EXPECTED_FRESH_CANVAS_404.test(url)) return
     errors.push(m.text())
   })
+
+  // Derive bad canvas responses: PUT/POST failures or unexpected GET statuses.
+  const badCanvasResponses = canvasResponses.filter(
+    (r) =>
+      (r.method === 'PUT' && r.status >= 400) ||
+      (r.method === 'GET' && r.status !== 200 && r.status !== 404) ||
+      (r.method === 'POST' && r.status >= 400)
+  )
+
   page.on('pageerror', (e) => errors.push(String(e)))
   await page.goto('/')
   await page.getByRole('button', { name: /new canvas/i }).click()
   await page.waitForURL(/\/c\/[a-z0-9]{12}/)
-  return errors
+  return { errors, badCanvasResponses }
 }
 
 const mockImg = (page: Page) => page.locator('img[src^="data:image/svg"]')
@@ -63,16 +72,17 @@ const mockImg = (page: Page) => page.locator('img[src^="data:image/svg"]')
 const clickNode = (n: Locator) => n.click({ force: true })
 
 test('generate creates a root node', async ({ page }) => {
-  const errors = await newCanvas(page)
+  const { errors, badCanvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
   await page.keyboard.press('Enter')
   await expect(page.getByText(/v1 · generate/)).toBeVisible() // pending node, immediate
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 }) // mock fills in (1.5s server delay)
   expect(errors).toEqual([])
+  expect(badCanvasResponses).toEqual([])
 })
 
 test('edit spawns variant children with arrows', async ({ page }) => {
-  const errors = await newCanvas(page)
+  const { errors, badCanvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
@@ -92,10 +102,11 @@ test('edit spawns variant children with arrows', async ({ page }) => {
   // '.tl-arrow-hint' class exists in the installed 5.2.5).
   await expect(page.locator('div[data-shape-type="arrow"]').first()).toBeVisible()
   expect(errors).toEqual([])
+  expect(badCanvasResponses).toEqual([])
 })
 
 test('canvas persists across reload', async ({ page }) => {
-  const errors = await newCanvas(page)
+  const { errors, badCanvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('persistence check')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
@@ -104,6 +115,7 @@ test('canvas persists across reload', async ({ page }) => {
   await expect(page.getByText(/v1 · generate/)).toBeVisible({ timeout: 10_000 })
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
   expect(errors).toEqual([])
+  expect(badCanvasResponses).toEqual([])
 })
 
 // Crop is an INSTANT op (lib/run-op.ts runInstantOp): no 1.5s mock server
@@ -113,7 +125,7 @@ test('canvas persists across reload', async ({ page }) => {
 // exercises the CropOverlay's real pointer-drag path (use-drag-rect.ts) for
 // the first time, rather than asserting against the contract alone.
 test('crop drag creates an instant child without panning the canvas', async ({ page }) => {
-  const errors = await newCanvas(page)
+  const { errors, badCanvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
@@ -160,6 +172,7 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
   expect(Math.abs(nodeCenterAfter.y - nodeCenterBefore.y)).toBeLessThan(2)
 
   expect(errors).toEqual([])
+  expect(badCanvasResponses).toEqual([])
 })
 
 // Reference-pick flow (Task 12): select A, arm Edit, "+ Reference", click B
@@ -169,7 +182,7 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
 // spawns a child off A with both a solid parent arrow and a dashed 'ref'
 // arrow from B (lib/run-op.ts createArrow(..., dashed=true) for the ref leg).
 test('reference pick flow: chip, selection restore, run', async ({ page }) => {
-  const errors = await newCanvas(page)
+  const { errors, badCanvasResponses } = await newCanvas(page)
 
   // Root A
   await page.getByPlaceholder('Describe a new image…').fill('root A')
@@ -219,4 +232,5 @@ test('reference pick flow: chip, selection restore, run', async ({ page }) => {
   await expect(page.getByText('ref', { exact: true }).last()).toBeVisible()
 
   expect(errors).toEqual([])
+  expect(badCanvasResponses).toEqual([])
 })
