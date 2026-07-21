@@ -46,8 +46,8 @@ export function runOp(
   // Task 12: when set, every child created by this call gets a second,
   // DASHED 'ref' arrow from this node (the picked reference) in addition to
   // the normal solid parent->child arrow. Optional and defaulted so every
-  // pre-Task-12 call site (PromptBar's generate, ActionMenu's vary, the
-  // non-reference edit path) keeps compiling unchanged.
+  // non-reference call site (generate, vary, plain edit) keeps compiling
+  // unchanged.
   refFromId?: TLShapeId
 ): void {
   const all = nodes(editor)
@@ -272,9 +272,9 @@ async function dispatch(
     // already shows the image immediately with status:'done', so this is a
     // non-blocking backfill: measure the real dimensions client-side and
     // patch them in once the image loads. run-op.ts is client-only
-    // (imported only by 'use client' components — Inspector.tsx,
-    // PromptBar.tsx, ActionMenu.tsx, CanvasApp.tsx), so the `Image` DOM
-    // constructor is always available here; no SSR guard needed.
+    // (imported only by 'use client' components — CommandBar.tsx,
+    // CanvasApp.tsx), so the `Image` DOM constructor is always available
+    // here; no SSR guard needed.
     if (!r.width || !r.height) {
       const img = new Image()
       // Same crossOrigin as AssetView's <img> (ImageNodeShape.tsx) — fal's
