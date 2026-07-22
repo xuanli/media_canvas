@@ -37,6 +37,7 @@ import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
 import { color, metric, type as typeTok } from '@/lib/design'
 import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconUpload, IconX } from '@/components/icons'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 const RECENT_KEY = 'gm-recent'
 const RECENT_CAP = 10
@@ -278,6 +279,10 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   const [editingCanvasName, setEditingCanvasName] = useState(false)
   const [canvasNameDraft, setCanvasNameDraft] = useState('')
 
+  // Task 17B: id of the canvas pending delete confirmation, or null when the
+  // dialog is closed — replaces the old window.confirm() gate.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
   // Task 15A: canvas name lives in the tldraw document record (verified in
   // the installed @tldraw/editor 5.2.5: `editor.getDocumentSettings():
   // TLDocument` / `editor.updateDocumentSettings(partial)`, backed by a real
@@ -478,9 +483,14 @@ export function TopNav({ canvasId }: { canvasId: string }) {
 
   // Task 15A: delete a canvas from the switcher dropdown. `e.stopPropagation()`
   // keeps the click off the row's own switch-canvas button underneath it.
-  const onDeleteCanvas = async (id: string, e: MouseEvent<HTMLButtonElement>) => {
+  // Task 17B: the ✕ click now just opens the confirm dialog (below); the
+  // actual delete moves to `deleteCanvas`, invoked from the dialog's confirm.
+  const requestDeleteCanvas = (id: string, e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
-    if (!window.confirm('Delete this canvas? The link will stop working.')) return
+    setConfirmDeleteId(id)
+  }
+
+  const deleteCanvas = async (id: string) => {
     try {
       await apiDelete(`/api/canvas/${id}`) // resolves for both real deletes and an already-gone 404
     } catch (err) {
@@ -489,6 +499,12 @@ export function TopNav({ canvasId }: { canvasId: string }) {
     }
     setRecent(removeRecentEntry(id))
     if (id === canvasId) router.push('/')
+  }
+
+  const confirmDelete = () => {
+    const id = confirmDeleteId
+    setConfirmDeleteId(null)
+    if (id) void deleteCanvas(id)
   }
 
   const saveDot =
@@ -585,7 +601,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
                   style={dropdownDeleteBtn}
                   title="delete this canvas"
                   aria-label="delete this canvas"
-                  onClick={(ev) => void onDeleteCanvas(e.id, ev)}
+                  onClick={(ev) => requestDeleteCanvas(e.id, ev)}
                 >
                   <IconX size={12} />
                 </button>
@@ -711,6 +727,16 @@ export function TopNav({ canvasId }: { canvasId: string }) {
           {importError}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete this canvas?"
+        body="The link will stop working for anyone who has it."
+        confirmLabel="Delete"
+        danger
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }

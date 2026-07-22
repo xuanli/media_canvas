@@ -6,6 +6,7 @@ import { apiPost, apiDelete } from '@/lib/api-client'
 import { color, metric, type as typeTok, buttonPrimary, inputField } from '@/lib/design'
 import { IconX } from '@/components/icons'
 import { MediaLabMark } from '@/components/TopNav'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 // Task 17: "Your canvases" reads the same `gm-recent` localStorage list
 // TopNav.tsx maintains (id/label/at, cap 10) — TopNav is the sole WRITER
@@ -99,13 +100,22 @@ export default function Home() {
     await newCanvas(true)
   }
 
+  // Task 17B: id of the canvas pending delete confirmation, or null when the
+  // dialog is closed — replaces the old window.confirm() gate.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
   // Task 17: mirrors TopNav.tsx's onDeleteCanvas exactly — confirm, DELETE
   // via apiDelete (which already treats a 404 as a successful delete for
   // an already-gone canvas), then drop the entry from the local list. No
   // navigation on success since we're already on the landing page.
-  const onDeleteCanvas = async (id: string, e: MouseEvent<HTMLButtonElement>) => {
+  // Task 17B: the ✕ click now just opens the confirm dialog; the actual
+  // delete moves to `deleteCanvas`, invoked from the dialog's confirm.
+  const requestDeleteCanvas = (id: string, e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
-    if (!window.confirm('Delete this canvas? The link will stop working.')) return
+    setConfirmDeleteId(id)
+  }
+
+  const deleteCanvas = async (id: string) => {
     try {
       await apiDelete(`/api/canvas/${id}`)
     } catch (err) {
@@ -113,6 +123,12 @@ export default function Home() {
       return
     }
     setRecent(removeRecentEntry(id))
+  }
+
+  const confirmDelete = () => {
+    const id = confirmDeleteId
+    setConfirmDeleteId(null)
+    if (id) void deleteCanvas(id)
   }
 
   const hasRecent = recent.length > 0
@@ -229,7 +245,7 @@ export default function Home() {
                   className="gm-icon-btn"
                   aria-label="delete canvas"
                   title="delete canvas"
-                  onClick={(e) => void onDeleteCanvas(entry.id, e)}
+                  onClick={(e) => requestDeleteCanvas(entry.id, e)}
                   style={{
                     position: 'absolute',
                     top: 6,
@@ -251,9 +267,21 @@ export default function Home() {
               </div>
             ))}
           </div>
-          <div style={{ fontSize: typeTok.micro, color: color.textMuted }}>Canvases are remembered per browser.</div>
+          <div style={{ fontSize: typeTok.micro, color: color.textMuted }}>
+            This list is saved in your browser — canvases stay available at their links.
+          </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete this canvas?"
+        body="The link will stop working for anyone who has it."
+        confirmLabel="Delete"
+        danger
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }
