@@ -303,6 +303,21 @@ export function CommandBar() {
     [editor]
   )
 
+  // Multi-select compose (user 2026-07-21): 2+ done image-nodes selected →
+  // the bar enters a "combine" mood. First-selected acts as the base
+  // (child hangs off it); the rest ride along as references. Selection
+  // order is tldraw's selected-ids order.
+  const multiSel = useValue(
+    'cmdbar-multisel',
+    () => {
+      const shapes = editor
+        .getSelectedShapes()
+        .filter((s): s is ImageNodeShape => s.type === 'image-node' && (s as ImageNodeShape).props.status === 'done')
+      return shapes.length >= 2 ? shapes : null
+    },
+    [editor]
+  )
+
   // [PORTED VERBATIM from Inspector.tsx] Reset form state when selection
   // changes — including the crop rect, so a stale rect drawn on a
   // previously-selected node doesn't ghost onto the next one (cropFrac is
@@ -443,6 +458,81 @@ export function CommandBar() {
 
   // Hooks are all unconditional above this point; only rendering branches
   // below, same rule Inspector followed with its `if (!sel) return null`.
+  // MULTI mood (user 2026-07-21): 2+ done nodes selected → combine tray.
+  // First-selected = base (child hangs off it), rest attach as references
+  // with dashed ref arrows. Reuses the edit op with referenceNodeIds.
+  if (!sel && multiSel) {
+    const [base, ...refs] = multiSel
+    const runCombine = () => {
+      if (!prompt.trim()) return
+      runOp(
+        editor,
+        base.id,
+        { type: 'edit', prompt, model, referenceNodeIds: refs.map((r) => r.id) },
+        variants,
+        (id) => {
+          const n = editor.getShape(id as TLShapeId)
+          return n && n.type === 'image-node' ? (n as ImageNodeShape).props.assetUrl : undefined
+        },
+        undefined,
+        refs.map((r) => r.id)
+      )
+      setPrompt('')
+    }
+    return (
+      <div style={{ ...barShell, padding: BAR_PADDING, display: 'flex', flexDirection: 'column', gap: 8 }} className="gm-bar">
+        <div style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
+          ✦ Combine {multiSel.length} images — creates a child of{' '}
+          <span style={{ color: color.text }}>{base.props.name?.trim() || `v${base.props.seq}`}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {multiSel.map((n, i) => (
+            <div key={n.id} style={{ textAlign: 'center' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={n.props.assetUrl}
+                alt=""
+                style={{
+                  width: 44,
+                  height: 32,
+                  objectFit: 'cover',
+                  borderRadius: 4,
+                  border: `1px solid ${i === 0 ? color.accent : color.border}`,
+                  display: 'block',
+                }}
+              />
+              <div style={{ fontSize: 9, color: i === 0 ? color.accent : color.textMuted }}>{i === 0 ? 'base' : 'ref'}</div>
+            </div>
+          ))}
+          <textarea
+            className="gm-input"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                runCombine()
+              }
+            }}
+            placeholder="describe the image to create from these…"
+            rows={1}
+            style={{ ...textareaField(), flex: 1, minHeight: 36, resize: 'none' }}
+          />
+          <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={{ ...field, width: 130 }}>
+            {EDIT_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <button className="gm-btn" onClick={runCombine} disabled={!prompt.trim()} style={buttonPrimary({ disabled: !prompt.trim() })}>
+            Run
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!sel) {
     // NOTE: no `position` override on the div below — barShell is
     // position:absolute and must stay so (a prior inline edit set relative

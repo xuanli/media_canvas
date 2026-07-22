@@ -9,7 +9,7 @@ export type RectFrac = { x: number; y: number; w: number; h: number }
 
 export type Operation =
   | { type: 'generate'; prompt: string; model: string }
-  | { type: 'edit'; prompt: string; model: string; referenceNodeId?: string }
+  | { type: 'edit'; prompt: string; model: string; referenceNodeId?: string; referenceNodeIds?: string[] }
   | { type: 'inpaint'; prompt: string; model: string; rect: Rect; referenceNodeId?: string }
   | { type: 'upload'; filename: string }
   | { type: 'crop'; rect: Rect }

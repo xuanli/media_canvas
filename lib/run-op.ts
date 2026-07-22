@@ -80,7 +80,9 @@ export function runOp(
   // the normal solid parent->child arrow. Optional and defaulted so every
   // non-reference call site (generate, vary, plain edit) keeps compiling
   // unchanged.
-  refFromId?: TLShapeId
+  refFromId?: TLShapeId,
+  // Multi-select compose (2026-07-21): dashed 'ref' arrows from EACH of these.
+  refFromIds?: TLShapeId[]
 ): void {
   const all = nodes(editor)
   const parent = sourceId ? all.find((s) => s.id === sourceId) : undefined
@@ -144,7 +146,9 @@ export function runOp(
     // guard against the picked node having been deleted in between, which
     // would otherwise create an arrow bound to nothing (an unbound, dangling
     // 'ref' arrow rather than a real error).
-    if (refFromId && editor.getShape(refFromId)) createArrow(editor, refFromId, id, 'ref', /* dashed */ true)
+    for (const rid of [...(refFromIds ?? []), ...(refFromId ? [refFromId] : [])]) {
+      if (editor.getShape(rid)) createArrow(editor, rid, id, 'ref', /* dashed */ true)
+    }
     void dispatch(editor, id, op, parent?.props.assetUrl, resolveRef)
   }
 }
@@ -394,14 +398,18 @@ async function dispatch(
       }
       case 'edit': {
         if (!parentUrl) throw new Error('edit requires a source image')
-        const refUrl = op.referenceNodeId ? resolveRef(op.referenceNodeId) : undefined
+        // Multi-reference (user 2026-07-21): referenceNodeIds (multi-select
+        // compose) merges with the older single referenceNodeId; both resolve
+        // to live urls at dispatch time, missing/deleted nodes drop out.
+        const refIds = [...(op.referenceNodeIds ?? []), ...(op.referenceNodeId ? [op.referenceNodeId] : [])]
+        const refUrls = refIds.map((id) => resolveRef(id)).filter((u): u is string => !!u)
         done(
           await apiPost<OpsResponse>('/api/ops', {
             capability: 'edit',
             model: op.model,
             prompt: op.prompt,
             imageUrl: parentUrl,
-            referenceUrls: refUrl ? [refUrl] : undefined,
+            referenceUrls: refUrls.length ? refUrls : undefined,
           })
         )
         break
