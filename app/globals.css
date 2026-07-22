@@ -198,3 +198,9 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 @media (max-width: 960px) {
   .gm-bar { bottom: 44px !important; }
 }
+
+/* Tray thumbnails: detach ✕ hidden until the thumb is hovered or focused */
+.gm-thumb-detach { opacity: 0; transition: opacity 120ms ease-out; }
+.gm-thumb-wrap:hover .gm-thumb-detach,
+.gm-thumb-wrap:focus-within .gm-thumb-detach { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .gm-thumb-detach { transition: none; } }
