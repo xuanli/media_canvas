@@ -12,8 +12,11 @@ fighting a chat window.
 ## The three pain points it answers (in priority order)
 
 1. **Whack-a-mole editing** — model edits change things you didn't ask to change.
-   Answer: rect-region inpainting (pixels outside the region are guaranteed
-   untouched) + cheap side-by-side variant branching.
+   Answer: select any region and describe the CHANGE to it (instruction-based
+   region editing via gpt-image-2 — "make it blue", not "a blue thing"), with
+   optional reference image + cheap side-by-side variant branching. (FLUX Fill's
+   generative-fill inpainting removed 2026-07-21: it could only describe "what
+   appears", not "what changes" — see plan Task 21.)
 2. **Chat is the wrong UI for visual work** — no spatial history, hard to go back
    and branch. Answer: the Canvas-First branching tree (the hero feature).
 3. **Deterministic edits shouldn't need a model** — crop/resize/text forced users

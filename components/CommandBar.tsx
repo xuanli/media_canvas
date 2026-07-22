@@ -441,13 +441,36 @@ export function CommandBar() {
           <IconUpload size={14} />
           {uploading ? '…' : 'Upload'}
         </button>
-        <input
+        {/* Task 20 (user feedback 2026-07-21): the idle prompt grows from a
+            single-line input to a multi-line textarea — same textareaField()
+            token language (padding/line-height) the armed Edit tray's prompt
+            already uses, so switching create<->edit reads as one bar, not
+            two UIs. `resize: 'none'` (unlike the tray's `resize: 'vertical'`)
+            since this is the calm/idle state, not an active editing form —
+            keeps the bar's height predictable for the zoom-cluster collision
+            math below. `minHeight: 64` backstops rows=2's natural height
+            (~62px: 2*20px line-height + 20px vertical padding + 2px border)
+            per the brief's "~64px min-height" so it never dips under that
+            floor at odd zoom/font-scale settings.
+            Enter still submits (matching the old single-line input's native
+            no-newline behavior); Shift+Enter now inserts a newline, which a
+            plain <input> could never do — the one behavior extension this
+            task makes, requiring `e.preventDefault()` so the submitting
+            Enter doesn't also insert a newline before `go()` clears the
+            field. */}
+        <textarea
           className="gm-input"
           value={genPrompt}
           onChange={(e) => setGenPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && go()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              go()
+            }
+          }}
           placeholder="Describe a new image…"
-          style={{ ...inputField({ large: true }), flex: 1 }}
+          rows={2}
+          style={{ ...textareaField({ large: true }), flex: 1, minHeight: 64, resize: 'none' }}
         />
         {/* Task 16b: idle-mood generate model picker — same styling (gm-input
             class + inputField() token, no appearance-none/chevron override)

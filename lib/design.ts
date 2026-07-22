@@ -89,8 +89,19 @@ export const motion = {
 // instead of sitting flush — a soft elevation shadow sells the "raised"
 // framing. Token'd (not inlined in CommandBar.tsx) so any other surface
 // that floats above the canvas later reuses the same shadow language.
+// Task 20 (user feedback 2026-07-21): the idle mood read flatter than the
+// armed tray even though both moods share this exact token — the
+// difference was height/content, not the shadow — but the shadow itself
+// was also independently flagged as too subtle to sell "floating" on its
+// own. Bumped blur/spread/opacity on both layers (12->18px / 32->44px /
+// 0.40->0.48 key shadow; 2->4px / 8->14px / 0.28->0.32 ambient shadow) —
+// still a soft two-layer shadow (key + ambient), not a hard single drop
+// shadow, just with more visual weight. Shared by all three CommandBar
+// moods (idle/selected/armed), so this also nudges the armed tray very
+// slightly — harmless, presentation-only, and if anything reinforces the
+// parity this task is chasing rather than working against it.
 export const elevation = {
-  bar: '0 12px 32px rgba(0,0,0,0.40), 0 2px 8px rgba(0,0,0,0.28)',
+  bar: '0 18px 44px rgba(0,0,0,0.48), 0 4px 14px rgba(0,0,0,0.32)',
 } as const
 
 // ── control builders ────────────────────────────────────────────────────
