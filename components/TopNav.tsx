@@ -202,16 +202,51 @@ const dropdownDeleteBtn: CSSProperties = {
   justifyContent: 'center',
 }
 
-// Task 15A wordmark (user #4): a small "2 nodes + edge" motif echoing the
-// canvas's own node/arrow language, 16px, decorative (aria-hidden — the
-// adjacent "gen media" text carries the accessible name via the parent
-// link).
-function WordmarkGlyph() {
+// Task 17 (user decision 2026-07-21, scope addition): "Media Lab" logo mark
+// — concept (a) "viewfinder + branch", chosen over (b) an Erlenmeyer flask
+// (too illustrative/detailed to read cleanly at 16px) and (c) a bare frame
+// + path (loses the explicit "one thing branches into two" idea that is
+// this product's core pitch). Three rounded corner brackets read as a
+// media/canvas frame; the frame's 4th (bottom-right) corner is replaced by
+// a stem that forks into two small nodes — literally "the frame's corner
+// branches" — reusing the hollow-ring + filled-accent node pairing from the
+// old WordmarkGlyph this replaces. One `size` prop (default 16, same
+// convention as components/icons.tsx) drives both the 16px nav mark and the
+// ~44px landing-hero mark off the same 16-unit viewBox; strokes use
+// currentColor so the mark inherits whatever text color surrounds it, with
+// exactly one accent-filled element (the "newest" node) per the design
+// system's "accent is the only color besides monochrome" rule. Decorative
+// (aria-hidden) in both call sites — the adjacent "Media Lab" text carries
+// the accessible name.
+export function MediaLabMark({ size = 16 }: { size?: number }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
-      <line x1="4" y1="12" x2="12" y2="4" stroke={color.accent} strokeWidth="1.5" />
-      <circle cx="4" cy="12" r="2.5" fill={color.navBg} stroke={color.accent} strokeWidth="1.5" />
-      <circle cx="12" cy="4" r="2.5" fill={color.accent} />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ display: 'block', flexShrink: 0 }}
+    >
+      {/* Three corner brackets = the media/canvas frame; bottom-right is
+          intentionally omitted — the branch below stands in for it. */}
+      <path
+        d="M2 5.5V2H5.5 M10.5 2H14V5.5 M2 10.5V14H5.5"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Stem forking into two nodes, occupying the missing bottom-right corner. */}
+      <path
+        d="M8 8L11 11M11 11L13.5 9.3M11 11L13.5 13"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="13.5" cy="9.3" r="1.3" fill={color.navBg} stroke="currentColor" strokeWidth={1.3} />
+      <circle cx="13.5" cy="13" r="1.6" fill={color.accent} />
     </svg>
   )
 }
@@ -470,8 +505,8 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         title="all canvases · home"
         style={{ display: 'flex', alignItems: 'center', gap: 6, color: color.text, textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
       >
-        <WordmarkGlyph />
-        <span>gen_media</span>
+        <MediaLabMark size={16} />
+        <span>Media Lab</span>
       </Link>
 
       {editingCanvasName ? (

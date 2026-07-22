@@ -121,6 +121,7 @@ polishing what exists? If no — cut it or park it in "Later".
   responses end-to-end (generate → edit chain on a real image). `inpaint`
   (flux-pro/v1/fill) live-verified 2026-07-21 during Task 11: real mask,
   edit confined to masked region, visually confirmed.
+- **Product display name**: Media Lab (user decision 2026-07-21); repo/package remain gen_media.
 
 ## Explicitly OUT of weekend scope (parked in "Later")
 
