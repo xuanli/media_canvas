@@ -100,7 +100,7 @@ test('edit spawns variant children with arrows', async ({ page }) => {
   await page.keyboard.press('Enter')
   await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
   await clickNode(mockImg(page).first()) // select node
-  await page.getByRole('button', { name: '✦ Edit' }).click()
+  await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible() // auto-armed on select (2026-07-21 fix): clicking ✦ Edit would now toggle OFF
   await page.getByPlaceholder(/describe the change/i).fill('make it snowy')
   await page.getByRole('button', { name: /^run$/i }).click()
   await expect(mockImg(page)).toHaveCount(2, { timeout: 10_000 })
@@ -217,7 +217,7 @@ test('edit tray region toggle: drag draws a region, Run dispatches inpaint', asy
 
   const node = mockImg(page).first()
   await clickNode(node)
-  await page.getByRole('button', { name: '✦ Edit' }).click()
+  await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible() // auto-armed on select (2026-07-21 fix): clicking ✦ Edit would now toggle OFF
   await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible()
 
   await page.getByRole('button', { name: 'Select region' }).click()
@@ -278,7 +278,7 @@ test('reference pick flow: chip, selection restore, run', async ({ page }) => {
   const nodeB = mockImg(page).nth(1)
 
   await clickNode(nodeA)
-  await page.getByRole('button', { name: '✦ Edit' }).click()
+  await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible() // auto-armed on select (2026-07-21 fix): clicking ✦ Edit would now toggle OFF
   await page.getByPlaceholder(/describe the change/i).fill('combine with reference')
   await page.getByRole('button', { name: '+ Reference' }).click()
   await expect(page.getByText(/pick a node/i)).toBeVisible()

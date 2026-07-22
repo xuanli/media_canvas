@@ -73,8 +73,7 @@ for (const width of WIDTHS) {
       await page.keyboard.press('Enter')
       await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
       await clickNode(mockImg(page))
-      await page.getByRole('button', { name: '✦ Edit' }).click()
-      await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible()
+      await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible() // auto-armed on select (2026-07-21 fix): clicking ✦ Edit would now toggle OFF
       await assertNoOverlap(page, `armed-edit@${width}`)
     })
 
@@ -85,7 +84,7 @@ for (const width of WIDTHS) {
       await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
       const node = mockImg(page).first()
       await clickNode(node)
-      await page.getByRole('button', { name: '✦ Edit' }).click()
+      await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible() // auto-armed on select (2026-07-21 fix): clicking ✦ Edit would now toggle OFF
       await page.getByRole('button', { name: 'Select region' }).click()
       await expect(page.getByPlaceholder(/describe the change to this region/i)).toBeVisible()
       // Draw an actual rect (not just toggle "Select region" on) — measured

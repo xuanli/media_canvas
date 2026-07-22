@@ -155,10 +155,10 @@ export default function Home() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <MediaLabMark size={44} />
-          <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: -0.5 }}>Media Lab</div>
+          <MediaLabMark size={56} />
+          <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>Media Lab</div>
         </div>
-        <div style={{ fontSize: typeTok.base, color: color.textSecondary }}>
+        <div style={{ fontSize: 17, color: color.text, opacity: 0.85, maxWidth: 560, lineHeight: 1.5 }}>
           A canvas where every generation and edit is a branch you can compare and refine.
         </div>
         {needsPasscode ? (

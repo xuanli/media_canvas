@@ -28,7 +28,8 @@ import { apiPost } from '@/lib/api-client'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import type { RectFrac } from '@/lib/types'
 import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton, elevation } from '@/lib/design'
-import { IconDownload, IconUpload, IconX } from '@/components/icons'
+import { IconChevronDown, IconDownload, IconUpload, IconX } from '@/components/icons'
+import { AssetsPopover } from '@/components/AssetsPopover'
 
 // ── Ported verbatim from Inspector.tsx (task-10/11 fix-round comments kept) ──
 
@@ -284,6 +285,7 @@ export function CommandBar() {
   const [genModel, setGenModel] = useState<string>(GENERATE_MODELS[0].id)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [assetsOpen, setAssetsOpen] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
   // Task 15A: click-to-edit node name on the SELECTED recipe line.
@@ -441,8 +443,26 @@ export function CommandBar() {
   // Hooks are all unconditional above this point; only rendering branches
   // below, same rule Inspector followed with its `if (!sel) return null`.
   if (!sel) {
+    // NOTE: no `position` override on the div below — barShell is
+    // position:absolute and must stay so (a prior inline edit set relative
+    // for the popover anchor, which knocked the whole bar to the top of the
+    // page; absolute elements are already positioning anchors).
     return (
-      <div style={{ ...barShell, padding: BAR_PADDING, display: 'flex', gap: 6, alignItems: 'center' }} className="gm-bar">
+      <div
+        style={{
+          ...barShell,
+          padding: BAR_PADDING,
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          // barShell's overflow:hidden exists for the ARMED tray's slide
+          // animation; the idle bar must NOT clip — the assets popover
+          // renders above the bar (bottom: 100% + 10px) and would be
+          // invisible under overflow:hidden (user-reported: "where is it?").
+          overflow: 'visible',
+        }}
+        className="gm-bar"
+      >
         <input
           ref={fileInputRef}
           type="file"
@@ -450,15 +470,21 @@ export function CommandBar() {
           onChange={(e) => void onUploadChange(e)}
           style={{ display: 'none' }}
         />
+        {/* Task 19b: Upload became the assets popover trigger (Upload new /
+            Your assets / Presets). Accessible name keeps "Upload" so the
+            existing E2E upload selector still resolves; direct file-input
+            path preserved inside the popover. */}
+        <AssetsPopover open={assetsOpen} onClose={() => setAssetsOpen(false)} />
         <button
           className="gm-btn"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => setAssetsOpen((v) => !v)}
           disabled={uploading}
-          style={buttonSecondary({ disabled: uploading })}
-          title="upload PNG/JPEG as a new root node"
+          style={buttonSecondary({ disabled: uploading, active: assetsOpen })}
+          title="add an image — upload, your assets, or presets"
         >
           <IconUpload size={14} />
           {uploading ? '…' : 'Upload'}
+          <IconChevronDown size={12} />
         </button>
         {/* Task 20 (user feedback 2026-07-21): the idle prompt grows from a
             single-line input to a multi-line textarea — same textareaField()
