@@ -308,10 +308,14 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
             : `v${p.seq} · ${p.op.type}${'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}`}
         </div>
         <div
+          // Design-critique item 11: 9px mono at textMuted (#666f7a on
+          // #1a1d22) measured ~3.4:1 contrast — below WCAG at the smallest
+          // text on screen. Bumped to 10px / color.textSecondary (~6.9:1);
+          // textMuted stays reserved for hover-revealed/tertiary chrome only.
           style={{
             fontFamily: typeTok.fontMono,
-            fontSize: typeTok.nano,
-            color: color.textMuted,
+            fontSize: 10,
+            color: color.textSecondary,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',

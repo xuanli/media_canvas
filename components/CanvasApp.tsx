@@ -34,6 +34,45 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
       // theme, unlike a `system`-following prop. Set synchronously so the
       // first paint is already dark, not just after the snapshot fetch.
       editor.user.updateUserPreferences({ colorScheme: 'dark' })
+
+      // Design-critique item 2 fix. Root cause (found by tracing the actual
+      // render path, not guessing): tldraw 5.2.5's selection ring, resize/
+      // rotate handles, and marquee-select fill are NOT CSS-driven at all —
+      // they're painted on an HTML canvas by ShapeIndicatorOverlayUtil /
+      // ShapeHandleOverlayUtil / SelectionForegroundOverlayUtil (installed
+      // `tldraw` package, src/lib/overlays/*.ts), which read
+      // `editor.getCurrentTheme().colors[mode].selectionStroke` /
+      // `.selectedContrast` / `.selectionFill` via `ctx.strokeStyle` /
+      // `ctx.fillStyle` — plain JS property reads, never `getComputedStyle`
+      // or a CSS custom property. That's why BOTH the original `:root`
+      // override AND the first attempt at scoping it to `.tl-container`
+      // (still kept in app/globals.css for the DOM-rendered bits that DO
+      // read `--tl-color-selected`, e.g. text-shape selection styling) were
+      // real no-ops for the ring/handles specifically — there was no CSS
+      // path to intercept. The actual fix is the theme API:
+      // `editor.updateTheme` (confirmed in the installed
+      // @tldraw/editor Editor.ts — merges into ThemeManager's registered
+      // 'default' theme, which `getCurrentTheme()` resolves by color mode).
+      // Overrides both light and dark palettes (dark is forced above, but a
+      // future toggle back to light/system shouldn't silently reintroduce
+      // tldraw's blue).
+      const defaultTheme = editor.getTheme('default')
+      if (defaultTheme) {
+        const selectionOverride = {
+          selectionStroke: color.accent,
+          selectedContrast: color.accentText,
+          selectionFill: 'rgba(45, 212, 191, 0.20)', // accent-tinted marquee/brush fill
+        }
+        editor.updateTheme({
+          ...defaultTheme,
+          colors: {
+            ...defaultTheme.colors,
+            light: { ...defaultTheme.colors.light, ...selectionOverride },
+            dark: { ...defaultTheme.colors.dark, ...selectionOverride },
+          },
+        })
+      }
+
       let stopSaveSync: (() => void) | null = null
       let cancelled = false
       void (async () => {

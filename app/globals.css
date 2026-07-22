@@ -63,12 +63,31 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   to { transform: rotate(360deg); }
 }
 
-/* Node-card elevation + selection ring (Task 15B). tldraw draws its own
-   selection indicator around the shape using --tl-color-selected (default
-   blue) — overridden here so armed/selected canvas nodes pick up the same
-   single accent used everywhere else in the chrome, per the brief's "accent
-   ONLY on primary actions / focus rings / selection" rule. */
-:root {
+/* Node-card elevation + selection ring (Task 15B, design-critique item 2
+   fix). tldraw draws its own selection indicator around the shape using
+   --tl-color-selected (default blue) — overridden here so armed/selected
+   canvas nodes pick up the same single accent used everywhere else in the
+   chrome, per the brief's "accent ONLY on primary actions / focus rings /
+   selection" rule.
+   Item 2 root cause (design-critique): the previous override lived on
+   `:root` (the <html> element). tldraw's own installed tldraw.css sets
+   `--tl-color-selected` directly on `.tl-container` AND on `.tl-theme__dark`
+   (both classes land on tldraw's own root DOM node, confirmed in the
+   installed tldraw/tldraw.css). A rule that matches an element directly
+   always wins over a value merely INHERITED from an ancestor (`:root`),
+   regardless of `!important` on the ancestor's rule — `!important` only
+   breaks ties among declarations that match the SAME element. So the old
+   `:root` override was never actually competing at the element tldraw reads
+   the var from; it was a no-op by construction, exactly as the critique
+   found in pixels. Fix: scope to `.tl-container` (the element the critique
+   named) so our declaration matches directly instead of merely inheriting;
+   `!important` is now needed for a different reason — `.tl-container` and
+   `.tl-theme__dark` are equal-specificity single-class selectors on the same
+   node, and dark mode is forced on (CanvasApp.tsx's
+   `editor.user.updateUserPreferences({ colorScheme: 'dark' })`), so without
+   `!important` this would still lose to `.tl-theme__dark`'s own (later,
+   non-important) declaration on a plain-order tie-break. */
+.tl-container {
   --tl-color-selected: #2dd4bf !important;
   --tl-color-selected-contrast: #0b2622 !important;
 }
@@ -108,9 +127,26 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
        988px floor. `bottom: 244px` covers the tallest observed tray (armed
        'inpaint': measured 202px at an 800px viewport in an isolated
        Playwright run) plus ~12px bar bottom offset plus 30px real margin. */
+/* Design-critique item 1 (watermark): the user chose "reserve layout space"
+   over a license key. The installed @tldraw/editor's own Watermark.tsx CSS
+   (LicenseManager.className rule, node_modules/.pnpm/@tldraw+editor.../src/
+   lib/license/Watermark.tsx) fixes the unlicensed/licensed-with-watermark
+   badge at `bottom: max(var(--tl-space-2), safe-area)` / `right: max(...)`
+   = 4px insets, 96x32px box — i.e. a reserved zone from (vw-100, vh-36) to
+   (vw-4, vh-4). Both `.gm-zoom-cluster` (bottom:12 before this fix) and
+   `.gm-bar` (bottom:12, see CommandBar.tsx's `barShell`) used to sit in
+   exactly that same bottom-right strip, clipping the watermark under their
+   own zIndex:300 vs. the watermark's zIndex:200 (shots 02/05/13/14 in the
+   critique). Fix: raise both to bottom:44 (36px watermark height + 8px
+   daylight) so neither ever shares the watermark's y-band — verified this
+   is sufficient rather than fought via x-only separation, since below
+   ~920px viewport width the centered bar's own width formula
+   (`min(720, 100vw-24)`) can't leave 100px of clear right margin no matter
+   what (the 24px total margin budget is fixed, independent of viewport
+   width, once the 100vw-24 branch is active). */
 .gm-zoom-cluster {
   position: absolute;
-  bottom: 12px;
+  bottom: 44px;
   right: 12px;
   z-index: 300;
 }
@@ -126,5 +162,23 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   .gm-zoom-plus { border-left: 1px solid rgba(255, 255, 255, 0.08) !important; }
 }
 @media (max-width: 1020px) {
-  .gm-zoom-cluster { bottom: 244px; }
+  /* 276 = 202 (tallest tray, armed 'inpaint', measured at 800px viewport
+     per Fix round 2) + 44 (.gm-bar's own bottom offset once the watermark
+     fix below also raises it at <=960px, the only sub-range where both
+     lifts are simultaneously active) + 30 real margin — recomputed from the
+     prior 244 (which assumed a 12px bar bottom) so this cluster still
+     clears the bar's new top edge instead of landing 2px inside it. */
+  .gm-zoom-cluster { bottom: 276px; }
+}
+/* Design-critique item 1, continued: below ~920px viewport width the bar
+   can no longer clear the watermark's reserved right-hand zone
+   horizontally (see the derivation above the .gm-zoom-cluster rule), so
+   raise it to bottom:44 — same "sit above the watermark's y-band entirely"
+   strategy already used for the zoom cluster — instead. 960 keeps a ~40px
+   safety margin above the exact ~920px floor. `!important`: `.gm-bar`'s
+   `bottom` is set inline by CommandBar.tsx's `barShell`/`{ ...barShell,
+   padding: 8 }` objects — same "inline beats non-!important stylesheet"
+   reason as `.gm-zoom-percent` above. */
+@media (max-width: 960px) {
+  .gm-bar { bottom: 44px !important; }
 }

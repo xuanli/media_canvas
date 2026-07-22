@@ -87,6 +87,14 @@ interface ButtonOpts {
   disabled?: boolean
   compact?: boolean // no horizontal padding growth, used for icon-only squares
   disabledColor?: string // override the disabled-state text color (buttonSecondary only)
+  // Design-critique item 8: "quiet-selected" — active state takes accentDim
+  // fill + accent text/border instead of a full solid accent fill. Used for
+  // controls that indicate an armed/picking STATE (armed verb pill, "Pick a
+  // node…") rather than a primary CTA, so solid color.accent stays reserved
+  // for exactly one control per screen (Run/Apply/Generate). Chip-style
+  // `active` uses (aspect presets, current-canvas markers) are unaffected —
+  // they don't pass `quiet` and keep the prior solid-accent `active` look.
+  quiet?: boolean
 }
 
 /** Primary: filled accent, dark text. Generate/Run/Apply/Continue. */
@@ -116,13 +124,13 @@ export function buttonPrimary(opts: ButtonOpts = {}): CSSProperties {
 
 /** Secondary: bordered, transparent fill. `active` = armed/selected (takes accent fill). */
 export function buttonSecondary(opts: ButtonOpts = {}): CSSProperties {
-  const { active = false, disabled = false, disabledColor = color.textMuted } = opts
+  const { active = false, disabled = false, disabledColor = color.textMuted, quiet = false } = opts
   return {
     height: metric.controlH,
     padding: `0 ${metric.paddingX}px`,
-    background: active ? color.accent : 'transparent',
-    color: active ? color.accentText : disabled ? disabledColor : color.text,
-    border: `1px solid ${active ? 'transparent' : color.border}`,
+    background: active ? (quiet ? color.accentDim : color.accent) : 'transparent',
+    color: active ? (quiet ? color.accent : color.accentText) : disabled ? disabledColor : color.text,
+    border: `1px solid ${active ? (quiet ? color.accent : 'transparent') : color.border}`,
     borderRadius: metric.radius,
     fontFamily: type.fontUi,
     fontSize: type.secondary,

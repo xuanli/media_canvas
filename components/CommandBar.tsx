@@ -138,7 +138,14 @@ function verbBtnStyle(active: boolean, disabled: boolean): CSSProperties {
   // buttonSecondary() defaults to — restore that here via the explicit
   // override rather than changing the shared default (Upload's disabled
   // state and other buttonSecondary() call sites never had this literal).
-  return buttonSecondary({ active, disabled, disabledColor: color.textDisabled })
+  //
+  // Design-critique item 8: `quiet: true` — the armed verb (this button when
+  // `active` is the currently-armed tool) used to take a full solid-accent
+  // fill, which combined with "Pick a node…" and Run being solid accent too
+  // meant three filled-teal controls competing at once. accentDim + accent
+  // text/border keeps the armed state legible while leaving solid
+  // color.accent free for exactly one control (Run) per screen.
+  return buttonSecondary({ active, disabled, disabledColor: color.textDisabled, quiet: true })
 }
 
 export function CommandBar() {
@@ -623,7 +630,7 @@ export function CommandBar() {
                         ? 'click a done node on the canvas to attach it as a reference'
                         : 'attach another node as a reference image'
                     }
-                    style={buttonSecondary({ active: pickingRef })}
+                    style={buttonSecondary({ active: pickingRef, quiet: true })}
                   >
                     {pickingRef ? 'Pick a node…' : '+ Reference'}
                   </button>

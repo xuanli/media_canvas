@@ -46,7 +46,23 @@ export function createArrow(
   editor.createShape({
     id: arrowId,
     type: 'arrow',
-    props: { richText: toRichText(label), dash: dashed ? 'dashed' : 'draw' },
+    props: {
+      richText: toRichText(label),
+      dash: dashed ? 'dashed' : 'draw',
+      // Design-critique item 3: tldraw's arrow label defaults to
+      // TLDefaultFontStyle's 'draw' value (a handwritten/comic-style
+      // typeface) — off-brand in a "professional photo editing tool"'s
+      // version graph. 'sans' is a confirmed member of the installed
+      // @tldraw/tlschema TLArrowShapeProps.font enum
+      // (['draw','sans','serif','mono'], see TLFontStyle.ts), so setting it
+      // at creation time (rather than fighting tldraw's --tl-font-draw CSS
+      // var, which the critique offered only as a fallback) is the direct
+      // fix. labelPosition (also a confirmed TLArrowShapeProps key, default
+      // 0.5 = arrow midpoint) is nudged toward the start terminal so the
+      // label no longer sits on top of the arrowhead at the end terminal.
+      font: 'sans',
+      labelPosition: 0.3,
+    },
   })
   editor.createBinding({ type: 'arrow', fromId: arrowId, toId: from, props: { terminal: 'start' } })
   editor.createBinding({ type: 'arrow', fromId: arrowId, toId: to, props: { terminal: 'end' } })
@@ -77,7 +93,21 @@ export function runOp(
     : placeChildren(
         { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
         variants,
-        occupiedBoxes
+        // Design-critique item 9: new roots (no parent) were landing ~5-10px
+        // apart vertically — placeChildren's own NUDGE(40)-stepping overlap
+        // loop stops the instant a candidate y clears the LAST occupied
+        // box's exact bottom edge, which can be anywhere from ~1px to
+        // NUDGE-1px depending on where the initial guess (100 + all.length*40)
+        // happened to land relative to it. All roots share one x column (this
+        // call's virtual-parent trick always resolves real x back to
+        // parentBox.x), so padding each occupied box's height by GAP_X here
+        // — same constant as the parent->child horizontal gutter, comfortably
+        // over the critique's ">=48px" floor — forces that same loop to keep
+        // stepping until the new root is at least GAP_X clear of the nearest
+        // existing one. placeChildren itself is untouched (its own inputs are
+        // just padded here for this one call), so lib/__tests__/tree.test.ts
+        // stays exactly as tested.
+        occupiedBoxes.map((b) => ({ ...b, h: b.h + GAP_X }))
       )
   let seq = nextSeq(all.map((s) => s.props.seq))
   // Root-only (no parent): only `generate` ever creates a root through this
@@ -195,7 +225,9 @@ export function createUploadedRoot(editor: Editor, url: string, filename: string
       const [spot] = placeChildren(
         { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
         1,
-        all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h }))
+        // Design-critique item 9 — same root-stacking-gap padding as runOp's
+        // root branch above (an uploaded image is also a root, no parent).
+        all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h + GAP_X }))
       )
       const id = createShapeId()
       editor.createShape<ImageNodeShape>({

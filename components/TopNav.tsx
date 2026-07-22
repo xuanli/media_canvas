@@ -36,7 +36,7 @@ import { useUiStore } from '@/lib/ui-store'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
 import { color, metric, type as typeTok } from '@/lib/design'
-import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconX } from '@/components/icons'
+import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconUpload, IconX } from '@/components/icons'
 
 const RECENT_KEY = 'gm-recent'
 const RECENT_CAP = 10
@@ -231,6 +231,14 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Design-critique item 4: both dropdowns (switcher, File) must dismiss on
+  // outside pointerdown AND Escape — previously neither did (critique shots
+  // 10/12: both still open two interactions later). Refs on each menu's
+  // wrapper <div> let the outside-pointerdown check tell "click inside the
+  // menu/its trigger" apart from "click elsewhere" (canvas, another control).
+  const switcherWrapRef = useRef<HTMLDivElement>(null)
+  const exportWrapRef = useRef<HTMLDivElement>(null)
+
   // Task 15A: canvas name click-to-edit state.
   const [editingCanvasName, setEditingCanvasName] = useState(false)
   const [canvasNameDraft, setCanvasNameDraft] = useState('')
@@ -282,6 +290,51 @@ export function TopNav({ canvasId }: { canvasId: string }) {
       if (shareTimerRef.current) clearTimeout(shareTimerRef.current)
     }
   }, [])
+
+  // Design-critique item 4: dropdown dismissal. Registered with
+  // { capture: true } on `document` for BOTH listeners (not just pointerdown
+  // — the critique's own reasoning "so the tldraw canvas can't swallow it"
+  // applies equally to keydown, since it guarantees this fires before any
+  // bubble-phase listener on the same `window`/`document` target, including
+  // CanvasApp.tsx's own global Escape handler, without depending on React
+  // effect-mount ordering between sibling/ancestor components).
+  //   - pointerdown: if either menu is open and the event target is outside
+  //     BOTH wrapper refs, close whichever is open. No stopPropagation here
+  //     — a genuine click-through to the canvas should still be allowed to
+  //     do its own thing (e.g. deselect), only the stale menu needs closing.
+  //   - Escape: if either menu is open, close it AND call
+  //     e.stopPropagation() so the same keypress doesn't also reach
+  //     CanvasApp's Escape listener and deselect/disarm on top of the menu
+  //     close (per this task's caution: "menu-close should consume the
+  //     Esc"). If neither menu is open, do nothing — Escape falls through to
+  //     CanvasApp exactly as before.
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (!switcherOpen && !exportOpen) return
+      const target = e.target as Node
+      const insideSwitcher = switcherWrapRef.current?.contains(target) ?? false
+      const insideExport = exportWrapRef.current?.contains(target) ?? false
+      if (insideSwitcher || insideExport) return
+      setSwitcherOpen(false)
+      setExportOpen(false)
+    }
+    // globalThis.KeyboardEvent (not the React-imported `KeyboardEvent` type
+    // used elsewhere in this file for JSX onKeyDown handlers) — this is a
+    // raw DOM listener on `document`, not a React synthetic event.
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (!switcherOpen && !exportOpen) return
+      e.stopPropagation()
+      setSwitcherOpen(false)
+      setExportOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown, { capture: true })
+    document.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, { capture: true })
+      document.removeEventListener('keydown', onKeyDown, { capture: true })
+    }
+  }, [switcherOpen, exportOpen])
 
   const onNewCanvas = async () => {
     setCreating(true)
@@ -369,6 +422,15 @@ export function TopNav({ canvasId }: { canvasId: string }) {
 
   const cancelEditCanvasName = () => setEditingCanvasName(false)
 
+  // Design-critique item 6: the nav's own display previously checked only
+  // `canvasName`, falling straight to the literal "untitled canvas" the
+  // instant it was empty — while the switcher (the `label` computed in the
+  // mount/update effect above) already fell back through `rootPrompt` first.
+  // Same object, two different names on screen (nav said "untitled canvas",
+  // the switcher listed the real prompt) until a canvas was explicitly
+  // renamed. Mirrors that exact fallback chain here so both surfaces agree.
+  const displayCanvasName = canvasName && canvasName.trim() ? canvasName : rootPrompt
+
   const onCanvasNameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.stopPropagation()
@@ -409,7 +471,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         style={{ display: 'flex', alignItems: 'center', gap: 6, color: color.text, textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
       >
         <WordmarkGlyph />
-        <span>gen media</span>
+        <span>gen_media</span>
       </Link>
 
       {editingCanvasName ? (
@@ -429,19 +491,19 @@ export function TopNav({ canvasId }: { canvasId: string }) {
           title="click to rename this canvas"
           style={{
             cursor: 'text',
-            color: canvasName ? color.text : color.textMuted,
-            fontStyle: canvasName ? 'normal' : 'italic',
+            color: displayCanvasName ? color.text : color.textMuted,
+            fontStyle: displayCanvasName ? 'normal' : 'italic',
             maxWidth: 220,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
         >
-          {canvasName || 'untitled canvas'}
+          {displayCanvasName || 'untitled canvas'}
         </span>
       )}
 
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }} ref={switcherWrapRef}>
         <button
           className="gm-icon-btn"
           style={navIconBtn}
@@ -456,15 +518,29 @@ export function TopNav({ canvasId }: { canvasId: string }) {
             {recent.length === 0 && <div style={{ ...dropdownItem, color: color.textMuted }}>No recent canvases</div>}
             {recent.map((e) => (
               <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {/* Design-critique item 7: accent is reserved for
+                    primary/focus/selection — a plain list row spending it on
+                    text color was decoration, not signal. Row text is always
+                    color.text now; the current canvas keeps a small accent
+                    dot instead (a much smaller accent footprint that still
+                    marks "you are here"). */}
                 <button
                   className="gm-dropdown-row"
-                  style={{ ...dropdownRowBtn, color: e.id === canvasId ? color.accent : color.text }}
+                  style={{ ...dropdownRowBtn, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   onClick={() => {
                     setSwitcherOpen(false)
                     if (e.id !== canvasId) router.push(`/c/${e.id}`)
                   }}
                 >
-                  {e.label}
+                  {e.id === canvasId && (
+                    <span
+                      aria-hidden="true"
+                      style={{ width: 5, height: 5, borderRadius: '50%', background: color.accent, flexShrink: 0 }}
+                    />
+                  )}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
+                    {e.label}
+                  </span>
                 </button>
                 <button
                   className="gm-icon-btn"
@@ -508,17 +584,35 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         )}
       </button>
 
-      <div style={{ position: 'relative' }}>
+      {/* Design-critique item 10: renamed trigger "Export" -> "File" — the
+          menu held "Import JSON" too, an IA mismatch (import isn't an
+          export). No e2e spec asserts this trigger's accessible name (grepped
+          e2e/*.spec.ts — only `.gm-bar`/`.gm-zoom-cluster` class selectors
+          and role/placeholder queries scoped to the canvas chrome, nothing
+          matching /export/i), so this is a safe rename. All three rows now
+          carry a 14px icon (was: only the PNG row had one, at 12px) —
+          IconDownload/IconUpload/IconDownload, consistent sizing. */}
+      <div style={{ position: 'relative' }} ref={exportWrapRef}>
         <button className="gm-btn" style={navBtn} onClick={() => setExportOpen((v) => !v)}>
-          Export
+          File
           <IconChevronDown size={12} />
         </button>
         {exportOpen && (
           <div style={{ ...dropdown, right: 0 }}>
-            <button className="gm-dropdown-row" style={dropdownItem} onClick={onExportJson}>
+            <button
+              className="gm-dropdown-row"
+              style={{ ...dropdownItem, display: 'inline-flex', alignItems: 'center', gap: metric.gapXs }}
+              onClick={onExportJson}
+            >
+              <IconDownload size={14} />
               Export JSON
             </button>
-            <button className="gm-dropdown-row" style={dropdownItem} onClick={() => fileInputRef.current?.click()}>
+            <button
+              className="gm-dropdown-row"
+              style={{ ...dropdownItem, display: 'inline-flex', alignItems: 'center', gap: metric.gapXs }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <IconUpload size={14} />
               Import JSON
             </button>
             <button
@@ -535,7 +629,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
               disabled={!selectedDone}
               title={selectedDone ? undefined : 'select a finished node first'}
             >
-              <IconDownload size={12} />
+              <IconDownload size={14} />
               PNG of selected node
             </button>
             <input
