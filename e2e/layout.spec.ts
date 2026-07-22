@@ -1,13 +1,17 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// Review fix round 1 — layout collision (Finding 1): the bottom-right zoom
-// cluster (components/CanvasApp.tsx ZoomCluster) and the centered
-// CommandBar (components/CommandBar.tsx) share the same fixed bottom row
-// and must never intersect at any viewport width >= 720px, across all four
-// CommandBar moods (idle / selected / armed-edit / armed-inpaint — the
-// armed 'inpaint' tray is the tallest, most collision-prone shape). This
-// spec is the regression guard for that: 3 widths x 4 moods = 12 bounding-
-// box intersection checks.
+// Review fix round 1 — layout collision (Finding 1): the zoom cluster
+// (components/CanvasApp.tsx ZoomCluster — bottom-left as of Task 15D, was
+// bottom-right) and the centered CommandBar (components/CommandBar.tsx)
+// share the same fixed bottom row and must never intersect at any viewport
+// width >= 720px, across all four CommandBar moods (idle / selected /
+// armed-edit / armed-inpaint — the armed 'inpaint' tray is the tallest,
+// most collision-prone shape). This spec is the regression guard for that:
+// 3 widths x 4 moods = 12 bounding-box intersection checks. The
+// intersection check itself (`intersects`) is side-agnostic — it only
+// needed updating for the cluster's move if the collision MATH changed,
+// and it didn't (the bar is centered, so left<->right is symmetric); only
+// this comment and the mirrored CSS (app/globals.css) needed the update.
 
 const WIDTHS = [800, 1024, 1440] as const
 const HEIGHT = 800

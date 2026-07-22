@@ -189,10 +189,11 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
 })
 
 // Reference-pick flow (Task 12): select A, arm Edit, "+ Reference", click B
-// (a different done node) on the canvas, expect a "ref: vN" chip and
-// selection restored to A (CommandBar.tsx's pick-detection effect — ported
-// verbatim from the old Inspector.tsx — snaps tldraw's selection back to the
-// edit target after a valid pick). Then Run
+// (a different done node) on the canvas, expect a "style ref" thumbnail
+// (Task 15D — replaces the old text-only "ref: vN" chip, same detach
+// affordance/accessible name) and selection restored to A (CommandBar.tsx's
+// pick-detection effect — ported verbatim from the old Inspector.tsx —
+// snaps tldraw's selection back to the edit target after a valid pick). Then Run
 // spawns a child off A with both a solid parent arrow and a dashed 'ref'
 // arrow from B (lib/run-op.ts createArrow(..., dashed=true) for the ref leg).
 test('reference pick flow: chip, selection restore, run', async ({ page }) => {
@@ -222,7 +223,11 @@ test('reference pick flow: chip, selection restore, run', async ({ page }) => {
 
   await clickNode(nodeB) // pickable node: dashed border, crosshair cursor (ImageNodeShape.tsx)
 
-  await expect(page.getByText(/ref: v/i)).toBeVisible()
+  // Task 15D: the old "ref: vN" text chip is now a "style ref" thumbnail in
+  // the tray header, with the detach button keeping its prior accessible
+  // name ("remove reference") via aria-label — assert both.
+  await expect(page.getByText('style ref')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'remove reference' })).toBeVisible()
   // Selection restored to A: the ActionMenu (only rendered for the selected
   // image-node) and the Edit form (armedTool survives the pick) are back.
   // Indirect proof: ActionMenu renders for any selected node, but the prompt

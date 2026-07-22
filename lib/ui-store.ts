@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import type { RectFrac } from '@/lib/types'
 
-type Tool = null | 'edit' | 'inpaint' | 'crop' | 'resize' | 'vary'
+// Task 15D (user decision 2026-07-21): 'vary' removed — the verb fired an
+// immediate no-form edit op and the user asked for it gone outright, not
+// hidden. Existing canvas nodes previously created via Vary are just plain
+// 'edit' ops in their stored recipe (lib/run-op.ts's Vary call site always
+// dispatched `{ type: 'edit', ... }` — there was never a distinct 'vary' op
+// type on the node's own props), so no persisted data references this
+// union member and nothing needs a migration.
+type Tool = null | 'edit' | 'inpaint' | 'crop' | 'resize'
 
 // v2 chrome (Task 14): mirrors save-sync.ts's title-bar dirty/error signal
 // as ui-store state so TopNav's save dot can render it reactively instead of

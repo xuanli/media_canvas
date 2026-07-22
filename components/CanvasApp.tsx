@@ -186,46 +186,41 @@ function EmptyHint() {
   )
 }
 
-// Task 15B: bottom-right zoom cluster — [−] [percent, click resets to 100%]
-// [+] [Fit]. tldraw camera APIs (verified against the installed 5.2.5
-// @tldraw/editor types: editor.zoomIn/zoomOut/resetZoom/zoomToFit/
-// zoomToSelection, editor.getZoomLevel()) mirror exactly what tldraw's own
-// (hidden) zoom-in/zoom-out/zoom-to-100/zoom-to-fit/zoom-to-selection
-// actions call internally (src/lib/ui/context/actions.tsx in the installed
-// package) — same calls, same animation option shape, just our own chrome
-// instead of tldraw's default UI. Cmd+=/Cmd+- keep working independently of
-// this component: hideUi only skips mounting TldrawUiContent, but
-// TldrawUiInner still calls useKeyboardShortcuts() unconditionally
-// ("Keyboard shortcuts... should always be mounted, even when the UI is
-// hidden" — installed TldrawUi.tsx comment), so no shortcut re-wiring is
-// needed or attempted here.
+// Task 15B: zoom cluster — [−] [percent, click resets to 100%] [+] [Fit].
+// tldraw camera APIs (verified against the installed 5.2.5 @tldraw/editor
+// types: editor.zoomIn/zoomOut/resetZoom/zoomToFit/zoomToSelection,
+// editor.getZoomLevel()) mirror exactly what tldraw's own (hidden)
+// zoom-in/zoom-out/zoom-to-100/zoom-to-fit/zoom-to-selection actions call
+// internally (src/lib/ui/context/actions.tsx in the installed package) —
+// same calls, same animation option shape, just our own chrome instead of
+// tldraw's default UI. Cmd+=/Cmd+- keep working independently of this
+// component: hideUi only skips mounting TldrawUiContent, but TldrawUiInner
+// still calls useKeyboardShortcuts() unconditionally ("Keyboard
+// shortcuts... should always be mounted, even when the UI is hidden" —
+// installed TldrawUi.tsx comment), so no shortcut re-wiring is needed or
+// attempted here.
 //
-// Fix round 1 (review finding — layout collision): this cluster (bottom:12,
-// right:12, ~180px wide at full size) and CommandBar's centered bar (up to
-// 720px wide, same bottom row) can overlap below ~1104px viewport width —
-// the bar stays at its 720px max until the viewport is only 744px wide, at
-// which point it already spans to within 12px of each edge, leaving no
-// horizontal room for anything else in that row. Two CSS-only breakpoints
-// (`.gm-zoom-cluster`/`.gm-zoom-percent` in app/globals.css) close every
-// gap, chosen from that same 720px/12px math rather than guessed:
-//   - <=1140px: drop the percent-readout segment (no separate "reset to
-//     100%" click target at this width — shift+0 / the container's own
-//     `title` cover it) so the cluster shrinks from ~180px to its measured
-//     compact width (~122px — icon-only [-][+][Fit], measured in an
-//     isolated Playwright run; a hand-estimate of ~100px undershot the
-//     real rendered "Fit" segment). Re-solving bar-right-edge <=
-//     cluster-left-edge with that 122px cluster gives a collision-free
-//     floor at a measured ~988px viewport width; 1140 keeps a comfortable
-//     margin above that.
-//   - <=1020px: even the ~122px compact cluster can't sit beside a 720px
-//     bar below that ~988px floor, so the cluster lifts to stack ABOVE the
-//     bar's row (still bottom-right, per the "keep it visually
-//     bottom-right, not top nav" constraint) instead of beside it. The
-//     lift distance was sized against the tallest real tray mood (armed
-//     'inpaint': measured 202px at an 800px viewport in an isolated
-//     Playwright run) plus headroom — see the `bottom` value on
-//     `.gm-zoom-cluster` in app/globals.css for the exact number and its
-//     derivation comment.
+// Task 15D (user feedback 2026-07-21): moved BOTTOM-RIGHT -> BOTTOM-LEFT.
+// All layout-critical box-model props (position/bottom/left/z-index) live in
+// `.gm-zoom-cluster` (app/globals.css), not this component's inline style,
+// specifically so that CSS file's collision-avoidance media queries can
+// override `bottom`/`left` per breakpoint. See that file for the current
+// mirrored collision math against CommandBar's centered bar and the
+// re-derived <=1020px lift constant (the tallest tray, armed 'inpaint',
+// grew with Task 15D's new source-thumbnail row — the lift was re-measured,
+// not reused from the pre-15D value).
+//
+// Fix round 1 (review finding — layout collision, historical): this cluster
+// and CommandBar's centered bar (up to 720px wide, same bottom row) can
+// overlap below ~1104px viewport width — the bar stays at its 720px max
+// until the viewport is only 744px wide, at which point it already spans to
+// within 12px of each edge, leaving no horizontal room for anything else in
+// that row. Two CSS-only breakpoints (`.gm-zoom-cluster`/`.gm-zoom-percent`
+// in app/globals.css) close every gap, chosen from that same 720px/12px
+// math rather than guessed — see app/globals.css for the exact thresholds
+// (unchanged in value by the bottom-left move, since the bar is centered
+// and the collision math is symmetric left<->right) and the current lift
+// constant's derivation.
 function ZoomCluster() {
   const editor = useEditor()
   const zoom = useValue('zoom-cluster-level', () => editor.getZoomLevel(), [editor])
