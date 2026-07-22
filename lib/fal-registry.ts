@@ -48,11 +48,14 @@ export interface ModelEntry {
   id: string
   label: string
   // `hidden`: marks an entry as retired from the default model picker while
-  // keeping it registered/callable (e.g. flux-kontext, superseded by
-  // nano-banana/gpt-image-2/seedream as edit alternates but not deleted for
-  // continuity of any nodes/tests that still reference it). Picker UI wiring
-  // to actually filter these out happens in a later task — this flag is
-  // registry-only metadata until then.
+  // keeping it registered/callable, for continuity of any nodes/tests that
+  // still reference it, without deleting it outright. (Historical use:
+  // flux-kontext carried this Task 16b->21; Task 21 deleted it outright
+  // instead — see the 'edit' capability comment below — since no node could
+  // still be depending on it that this prototype needs to keep loading. Kept
+  // as a mechanism for a future case where a soft-retire is preferred over a
+  // hard delete.) Picker UI wiring to actually filter these out would be a
+  // later task if this flag is used again — it's registry-only metadata.
   hidden?: true
   // Task 16b: per-model override for /api/ops's Promise.race timeout (falls
   // back to that route's 90_000 default when unset). Needed because
@@ -60,12 +63,53 @@ export interface ModelEntry {
   // quality:"high") already exceeds the old fixed 90s — see the gpt-image-2
   // entries below for the actual value + margin rationale.
   timeoutMs?: number
+  // Task 21: marks a model as capable of masked/region-constrained edits
+  // (accepts BOTH `mask_url` and `image_urls[]` on the same request — see
+  // `.superpowers/sdd/model-capability-probe.md`). Only gpt-image-2 has
+  // this today; FLUX Fill (mask, no refs) and flux-kontext were removed
+  // entirely rather than kept as a lesser region option — the product
+  // decision is instruction-based region editing via gpt-image-2 only, not
+  // a hard-guarantee/soft-guarantee model choice. Read by CommandBar.tsx's
+  // region-mode UI (indirectly — the picker no longer offers a region-model
+  // CHOICE since there's only one, but this flag documents why gpt-image-2
+  // is the one hardcoded as the inpaint capability's sole model).
+  regionCapable?: true
   toParams: (p: {
     prompt: string
     imageUrl?: string
     maskUrl?: string
     referenceUrls?: string[]
   }) => Record<string, unknown>
+}
+
+// Task 21: hoisted out of the REGISTRY literal (rather than duplicated
+// inline in both `edit.models['gpt-image-2']` and `inpaint.models['gpt-image-2']`)
+// so the two capabilities can never drift apart on id/toParams/timeoutMs — a
+// masked call IS an edit call with `mask_url` set, not a different fal
+// endpoint, and this makes that fact structurally true, not just documented.
+const GPT_IMAGE_2_EDIT: ModelEntry = {
+  id: 'fal-ai/gpt-image-2/edit',
+  label: 'GPT Image 2',
+  // Same quality decision as the generate entry below: "high" kept
+  // explicit (measured ~161s live), timeoutMs raised with margin rather
+  // than guessing at "medium"'s latency with no data.
+  timeoutMs: 240_000,
+  // Task 21: model-capability-probe.md confirmed gpt-image-2/edit is the
+  // only fal endpoint of the three probed that accepts BOTH `mask_url` and
+  // `image_urls[]` on the same request — the only model that can do
+  // region-constrained edit + reference image in one call. FIX (probe
+  // finding): the PRE-Task-21 version of this toParams accepted `maskUrl`
+  // in its param type but never forwarded it to `mask_url` — a plain
+  // whole-image edit call always worked, but a masked region-edit call
+  // routed through this mapper would have silently dropped the mask and
+  // edited the whole image instead.
+  regionCapable: true,
+  toParams: ({ prompt, imageUrl, maskUrl, referenceUrls = [] }) => ({
+    prompt,
+    image_urls: [imageUrl, ...referenceUrls].filter(Boolean),
+    quality: 'high',
+    ...(maskUrl ? { mask_url: maskUrl } : {}),
+  }),
 }
 
 export const REGISTRY: Record<
@@ -91,8 +135,8 @@ export const REGISTRY: Record<
     default: 'nano-banana',
     models: {
       'nano-banana': {
-        id: 'fal-ai/nano-banana',
-        label: 'Nano Banana',
+        id: 'fal-ai/nano-banana-2', // upgraded from fal-ai/nano-banana (user 2026-07-21; probe: .superpowers/sdd/nano-banana-2-probe.md). Key stays 'nano-banana' so old node recipes retry correctly.
+        label: 'Nano Banana 2',
         toParams: ({ prompt }) => ({ prompt, aspect_ratio: '16:9' }),
       },
       'gpt-image-2': {
@@ -125,10 +169,15 @@ export const REGISTRY: Record<
 
   // edit — default UNCHANGED: nano-banana/edit (fal-ai/nano-banana/edit).
   // Alternates: gpt-image-2 edit, seedream-5-lite edit (both new, verified live
-  // 2026-07-21). flux-kontext RETIRED from the default picker set per the Task
-  // 16 model-lineup decision — kept registered/callable but flagged
-  // `hidden: true` (see ModelEntry comment); actual picker-UI filtering is a
-  // later task.
+  // 2026-07-21).
+  //
+  // Task 21 (REVISED per user 2026-07-21, see task-21-brief.md +
+  // model-capability-probe.md): flux-kontext REMOVED entirely (was
+  // `hidden: true` since Task 16b — retired from the picker but still
+  // registered/callable; now deleted outright, no lingering callers). The
+  // edit lineup is nano-banana (default), gpt-image-2, seedream-5-lite —
+  // matching EDIT_MODELS in components/CommandBar.tsx exactly, no hidden
+  // entries left to keep in sync.
   //   nano-banana/edit Input required: ["prompt","image_urls"] — ARRAY of image
   //     urls (base image first, then any reference images), NOT image_url.
   //     Optional: aspect_ratio (default "auto"), num_images, output_format,
@@ -137,37 +186,26 @@ export const REGISTRY: Record<
   //   gpt-image-2/edit Input required: ["prompt","image_urls"] (ARRAY, max 16).
   //     Optional: image_size (default "auto" — infers from input), mask_url,
   //     output_format, quality (default "high"), num_images, sync_mode.
+  //     `mask_url` and `image_urls` are independent, co-existing fields (not
+  //     mutually exclusive) per the live OpenAPI schema — this is what makes
+  //     gpt-image-2 the only model that can do region-constrained edit +
+  //     reference image in one call (see regionCapable below + the probe doc).
   //   seedream-5-lite edit (fal-ai/bytedance/seedream/v5/lite/edit) Input
   //     required: ["prompt","image_urls"] (ARRAY, up to 10 refs). Optional:
   //     image_size (default "auto_2K"), max_images, num_images,
   //     enable_safety_checker, sync_mode.
-  //   flux-pro/kontext Input required: ["prompt","image_url"] — SINGULAR
-  //     image_url, no reference-image array (guidance_scale/aspect_ratio
-  //     optional). hidden: true (see above) — not re-verified live in this pass.
   edit: {
     default: 'nano-banana',
     models: {
       'nano-banana': {
-        id: 'fal-ai/nano-banana/edit',
-        label: 'Nano Banana',
+        id: 'fal-ai/nano-banana-2/edit', // upgraded from fal-ai/nano-banana/edit (same key-stability rationale)
+        label: 'Nano Banana 2',
         toParams: ({ prompt, imageUrl, referenceUrls = [] }) => ({
           prompt,
           image_urls: [imageUrl, ...referenceUrls].filter(Boolean),
         }),
       },
-      'gpt-image-2': {
-        id: 'fal-ai/gpt-image-2/edit',
-        label: 'GPT Image 2',
-        // Same quality decision as the generate entry above: "high" kept
-        // explicit (measured ~161s live), timeoutMs raised with margin
-        // rather than guessing at "medium"'s latency with no data.
-        timeoutMs: 240_000,
-        toParams: ({ prompt, imageUrl, referenceUrls = [] }) => ({
-          prompt,
-          image_urls: [imageUrl, ...referenceUrls].filter(Boolean),
-          quality: 'high',
-        }),
-      },
+      'gpt-image-2': GPT_IMAGE_2_EDIT,
       'seedream-5-lite': {
         id: 'fal-ai/bytedance/seedream/v5/lite/edit',
         label: 'Seedream 5 Lite',
@@ -176,36 +214,36 @@ export const REGISTRY: Record<
           image_urls: [imageUrl, ...referenceUrls].filter(Boolean),
         }),
       },
-      'flux-kontext': {
-        id: 'fal-ai/flux-pro/kontext',
-        label: 'FLUX Kontext',
-        hidden: true,
-        toParams: ({ prompt, imageUrl }) => ({ prompt, image_url: imageUrl }),
-      },
     },
   },
 
-  // inpaint — fal-ai/flux-pro/v1/fill (UNCHANGED from the Task 2 pin).
-  //   Input required: ["prompt","image_url","mask_url"]. Optional: output_format,
-  //   num_images, seed, safety_tolerance, enhance_prompt, sync_mode.
+  // inpaint — Task 21 (REVISED per user 2026-07-21): FLUX Fill
+  // (fal-ai/flux-pro/v1/fill) REMOVED entirely. Root insight (user): FLUX
+  // Fill is a GENERATIVE FILL model — the prompt describes "what appears" in
+  // the masked region, regenerating it from scratch and losing whatever was
+  // there before. gpt-image-2/edit's masked edit is INSTRUCTION-based — the
+  // prompt describes "the CHANGE to the region" ("make it blue"), editing the
+  // existing content in place — the capability users actually asked for, and
+  // it takes a reference image in the same call (FLUX Fill never could:
+  // single `image_url`, no array). So the ONLY model for this capability is
+  // now gpt-image-2, reusing the exact same `edit.models['gpt-image-2']`
+  // entry/id/toParams above (same endpoint `fal-ai/gpt-image-2/edit` —
+  // "inpaint" here is just "edit with a mask_url set", not a different fal
+  // endpoint).
   inpaint: {
-    default: 'flux-fill',
+    default: 'gpt-image-2',
     models: {
-      'flux-fill': {
-        id: 'fal-ai/flux-pro/v1/fill',
-        label: 'FLUX Fill',
-        toParams: ({ prompt, imageUrl, maskUrl }) => ({
-          prompt,
-          image_url: imageUrl,
-          mask_url: maskUrl,
-        }),
-      },
+      'gpt-image-2': GPT_IMAGE_2_EDIT,
     },
   },
 }
 
-// NOTE(mask convention): FLUX Fill treats the mask's WHITE pixels as the region to
-// regenerate and preserves BLACK pixels. This is fal's documented convention; it was
-// NOT re-verified with a live 200 in the Task 2 spike (account balance exhausted at
-// the time) or in the Task 16a pass (out of scope — inpaint is unchanged). Confirm
-// with one real call before relying on it in the inpaint pipeline.
+// NOTE(mask convention): gpt-image-2/edit's schema description says `mask_url`
+// is "a URL to a mask image indicating what part of the image to edit" — it
+// was NOT schema-verified for exact mask semantics (white=edit vs black=edit,
+// dimension-matching requirements, alpha channel) in the read-only probe (see
+// model-capability-probe.md's closing note); lib/instant-ops.ts's
+// renderRectMask output (previously tuned for FLUX Fill's WHITE=edit
+// convention) is reused unchanged and was confirmed correct for gpt-image-2
+// too via this task's live-verify (localized edit landed inside the drawn
+// rect, not outside it — see task-21-report.md).

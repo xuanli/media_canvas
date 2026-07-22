@@ -49,10 +49,21 @@ instant, free, live-previewed. Every tool follows the same three-beat loop:
 3. **Commit → child node(s)** — ✦ Run spawns N pending children that fill in
    as results land; Apply creates one finished child instantly.
 
-**Precision (pain point 1):** rect-region inpainting via FLUX Fill — pixels
-outside the region are guaranteed untouched — plus cheap side-by-side variant
-branching. Freehand brush is out of scope; the pipeline is brush-ready (a brush
-only changes how the mask PNG is painted).
+**Precision (pain point 1):** rect-region editing via gpt-image-2's masked
+edit — instruction-based ("describe the CHANGE to this region", e.g. "make it
+blue"), editing the existing pixels in place rather than regenerating the
+region from a prompt — plus cheap side-by-side variant branching. (REVISED
+2026-07-21, Task 21: originally FLUX Fill, a generative-fill inpaint model —
+"pixels outside the region are guaranteed untouched" was a real property of
+that model, but the prompt described *what appears* in the region, not *what
+changes*, which lost existing content on every masked edit. gpt-image-2's
+masked edit was adopted instead because it takes the same rect-drawn mask
+AND an optional reference image in one call, with instruction framing; the
+guarantee softens from "hard pixel composite" to "the model focuses the edit
+on this area" — see `CLAUDE.md`'s pain-point-1 entry and
+`.superpowers/sdd/model-capability-probe.md` for the endpoint comparison.)
+Freehand brush is out of scope; the pipeline is brush-ready (a brush only
+changes how the mask PNG is painted).
 
 **References:** the Edit panel's "+ Reference" arms pick mode; clicking any
 other canvas node attaches it (e.g. "match the style of v2"). Chat UIs cannot
@@ -137,11 +148,15 @@ fal.ai models + fal.media CDN (images)   Vercel Blob (canvas snapshots)
 - **Deployable to Vercel** because no server disk/DB: images are CDN URLs,
   tree state is client-side. Deployed demo is per-browser; README says so.
 - **Model registry** (server): capability → default model + optional
-  alternates + a params-mapper per model. `generate → FLUX 1.1 [pro]`
-  (alt: Seedream 4.0), `edit → nano-banana` (alt: FLUX.1 Kontext),
-  `inpaint → FLUX Fill`. Swapping/adding a model = one registry entry. ✦
-  panels render a model picker only where >1 model is registered — comparing
-  models across sibling variants is an intentional iteration axis.
+  alternates + a params-mapper per model. As of Task 21 (2026-07-21):
+  `generate → nano-banana` (alts: gpt-image-2, seedream-5-lite,
+  flux-1.1-pro), `edit → nano-banana` (alts: gpt-image-2, seedream-5-lite),
+  `inpaint → gpt-image-2` only (FLUX Fill and flux-kontext removed from the
+  registry — see §2's "Precision (pain point 1)" for why). Swapping/adding a
+  model = one registry entry. ✦ panels render a model picker only where >1
+  model is registered — comparing models across sibling variants is an
+  intentional iteration axis; inpaint's single-model capability shows a
+  locked field instead of a picker.
 - **Direct primitives, no agent loop.** Ops are structured recipes through one
   `runOp(parentId, op, variantCount)` dispatch. The theme is *control*; an LLM
   between user intent and operations re-introduces the indirection this tool
@@ -228,7 +243,8 @@ Weekend-honest strategy:
    demoable moment.**
 3. `edit` + variants + pending/error/retry nodes.
 4. Instant ops (crop → resize) + upload sync.
-5. `inpaint` (rect overlay → mask PNG → FLUX Fill).
+5. `inpaint` (rect overlay → mask PNG → gpt-image-2 masked instruction edit;
+   originally FLUX Fill, replaced Task 21 — see §2 "Precision (pain point 1)").
 6. Canvas-as-URL: `/c/:id` + Vercel Blob save/load + passcode gate.
 7. References (pick mode).
 8. Polish: zoom-to-edit feel, empty state, export/import, README.

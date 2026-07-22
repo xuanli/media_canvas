@@ -92,7 +92,7 @@ function fracToNaturalRect(f: RectFrac, naturalW: number, naturalH: number) {
 // from the picker, still registered/callable). Both lists must be updated
 // together when the registry's edit model set changes.
 const EDIT_MODELS = [
-  { id: 'nano-banana', label: 'Nano Banana' },
+  { id: 'nano-banana', label: 'Nano Banana 2' },
   { id: 'gpt-image-2', label: 'GPT Image 2' },
   { id: 'seedream-5-lite', label: 'Seedream 5 Lite' },
 ] as const
@@ -101,7 +101,7 @@ const EDIT_MODELS = [
 // (nano-banana first) matches `REGISTRY.generate.default`. Both lists must
 // be updated together when the registry's generate model set changes.
 const GENERATE_MODELS = [
-  { id: 'nano-banana', label: 'Nano Banana' },
+  { id: 'nano-banana', label: 'Nano Banana 2' },
   { id: 'gpt-image-2', label: 'GPT Image 2' },
   { id: 'seedream-5-lite', label: 'Seedream 5 Lite' },
   { id: 'flux-1.1-pro', label: 'FLUX 1.1' },
@@ -349,6 +349,25 @@ export function CommandBar() {
     prevSelIdRef.current = selId
   }, [selId, pickingRef, sel, editor, setCropFrac, setPickingRef, setRegionMode])
 
+  // Bug fix (user-reported 2026-07-21): selecting a node should land you
+  // straight in Edit mode — selection intent IS edit intent. Keyed on
+  // SELECTION CHANGE via autoArmedForRef (not "whenever no tool is armed"),
+  // so Esc-closing the tray doesn't instantly re-open it; pickingRef guard
+  // keeps the reference-pick flow from being hijacked; pending/error nodes
+  // don't arm (nothing to edit yet) — but a pending node that finishes WHILE
+  // selected arms then, which is the desirable "ready for you" moment.
+  const autoArmedForRef = useRef<TLShapeId | null>(null)
+  useEffect(() => {
+    if (!sel) {
+      autoArmedForRef.current = null
+      return
+    }
+    if (sel.props.status !== 'done' || pickingRef) return
+    if (autoArmedForRef.current === selId) return
+    autoArmedForRef.current = selId
+    if (armedTool === null) setArmedTool('edit')
+  }, [selId, sel, pickingRef, armedTool, setArmedTool])
+
   // [PORTED VERBATIM from Inspector.tsx] Clear the drawn region rect and any
   // in-progress prompt on EVERY armedTool change (tracked via a ref so
   // re-renders that leave armedTool unchanged don't wipe mid-typing state).
@@ -574,13 +593,25 @@ export function CommandBar() {
 
   // Task 18: unified Run — routes by whether a region is active (see
   // `regionActive` above), UNCHANGED schema/dispatch either way (run-op.ts's
-  // runOp/dispatch and lib/fal-registry.ts's flux-fill default are exactly
-  // what the old standalone runInpaint dispatched).
+  // runOp/dispatch handle both branches).
+  // Task 21: the region branch now dispatches model: 'gpt-image-2' (was
+  // 'flux-fill', removed from the registry entirely — see
+  // lib/fal-registry.ts) and — new — passes referenceNodeId/refFromId
+  // through exactly like the whole-image edit branch below, since
+  // gpt-image-2 is reference-capable (region + reference is now possible in
+  // one call; FLUX Fill never supported a reference image at all).
   const runEdit = () => {
     if (!prompt.trim()) return
     if (regionActive) {
       const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
-      runOp(editor, sel.id, { type: 'inpaint', prompt, model: 'flux-fill', rect }, variants)
+      runOp(
+        editor,
+        sel.id,
+        { type: 'inpaint', prompt, model: 'gpt-image-2', rect, referenceNodeId: refId ?? undefined },
+        variants,
+        resolveRef,
+        refId ?? undefined
+      )
     } else {
       runOp(
         editor,
@@ -753,31 +784,52 @@ export function CommandBar() {
                   the old inpaint tray's always-shown hint (which had no
                   toggle to gate it on). */}
               {regionMode && (
-                <div style={{ color: color.textSecondary }}>drag on the image to mark the region to replace</div>
+                <div style={{ color: color.textSecondary }}>drag on the image to mark the region to edit</div>
               )}
-              {regionActive && (
-                <div className="gm-region-badge">region locked — pixels outside can&apos;t change</div>
+              {/* Task 21: badge reworded from "region locked — pixels
+                  outside can't change" — that was FLUX Fill's hard
+                  composite guarantee (regenerate the mask, paste it back
+                  over the untouched original). gpt-image-2 is an
+                  instruction-based masked edit on a single model call, a
+                  softer "focuses the edit here" guarantee, not a
+                  pixel-level compositing one — this wording no longer
+                  overclaims what the model actually does. */}
+              {regionActive && <div className="gm-region-badge">editing this region</div>}
+              {/* Task 21: one-line note (brief: "if the user had
+                  nano-banana/seedream selected and draws a region, show
+                  gpt-image-2 as the region model with a one-line note") —
+                  only shown when it's actually informative, i.e. the model
+                  the user had picked before drawing a region differs from
+                  the one Run will actually use. */}
+              {regionActive && model !== 'gpt-image-2' && (
+                <div style={{ color: color.textSecondary, fontSize: typeTok.micro }}>
+                  region editing uses GPT Image 2
+                </div>
               )}
               <textarea
                 className="gm-input"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={regionMode ? 'describe what appears in the region…' : 'describe the change…'}
+                placeholder={regionMode ? 'describe the change to this region…' : 'describe the change…'}
                 rows={2}
                 style={{ ...textareaField({ large: true }), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {/* Task 18 region-active lock: model is forced to the
-                    'flux-fill' default (same id runEdit dispatches) — shown
-                    as a disabled, non-selectable field rather than the live
+                {/* Task 21 (was Task 18's region-active lock): gpt-image-2 is
+                    now the ONLY regionCapable model (lib/fal-registry.ts),
+                    so this is no longer "locked to the default while a
+                    region is set" among several choices — it's the sole
+                    model the 'inpaint' capability has. Still shown as a
+                    disabled, non-selectable field rather than the live
                     picker so it can't be typo'd into disagreeing with what
-                    Run actually sends. */}
+                    Run actually sends (same rationale as the Task 18
+                    version, updated model). */}
                 {regionActive ? (
                   <span
-                    title="model locked to FLUX Fill while a region is set"
+                    title="region editing routes through GPT Image 2 — the only model that supports a mask + reference in one call"
                     style={{ ...field, display: 'inline-flex', alignItems: 'center', color: color.textDisabled, cursor: 'not-allowed' }}
                   >
-                    FLUX Fill (region)
+                    GPT Image 2 (region)
                   </span>
                 ) : (
                   <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
@@ -802,7 +854,7 @@ export function CommandBar() {
                   title={
                     regionMode
                       ? 'back to whole-image edit'
-                      : 'draw a rect region — pixels outside it are guaranteed untouched'
+                      : 'draw a rect region — GPT Image 2 focuses the edit there'
                   }
                   style={buttonSecondary({ active: regionMode, quiet: true })}
                 >
@@ -814,24 +866,32 @@ export function CommandBar() {
                     tray header above (same detach affordance, same
                     "remove reference" accessible name, now on the
                     thumbnail itself). This button stays exactly as before,
-                    just newly gated on `!refId` since there's nothing left
-                    for it to do once a ref is attached (re-picking means
-                    detach-then-"+ Reference" again, unchanged UX). Task 18:
-                    also disabled while a region is active — references
-                    aren't supported for region fills. */}
+                    just gated on `!refId` since there's nothing left for it
+                    to do once a ref is attached (re-picking means
+                    detach-then-"+ Reference" again, unchanged UX).
+                    Task 18 had also force-disabled this while a region was
+                    active (FLUX Fill had no reference-image field at all).
+                    Task 21 REMOVES that region-specific disable: the region
+                    branch now always routes to gpt-image-2, which — like
+                    every other model in EDIT_MODELS — accepts
+                    referenceUrls (model-capability-probe.md), so the old
+                    hardcoded `disabled={regionActive}` would now be
+                    disabling a control the selected model can actually
+                    serve. Gating is on capability, not on region-mode: since
+                    no currently-registered edit model lacks a referenceUrls
+                    param, that capability check trivially reduces to
+                    "always enabled" today, but the disable is no longer
+                    hardcoded to "region is on". */}
                 {!refId && (
                   <button
                     className="gm-btn"
                     onClick={startPick}
-                    disabled={regionActive}
                     title={
-                      regionActive
-                        ? "style reference isn't supported for region fills"
-                        : pickingRef
-                          ? 'click a done node on the canvas to attach it as a reference'
-                          : 'attach another node as a reference image'
+                      pickingRef
+                        ? 'click a done node on the canvas to attach it as a reference'
+                        : 'attach another node as a reference image'
                     }
-                    style={buttonSecondary({ active: pickingRef, disabled: regionActive, quiet: true })}
+                    style={buttonSecondary({ active: pickingRef, quiet: true })}
                   >
                     {pickingRef ? 'Pick a node…' : '+ Reference'}
                   </button>

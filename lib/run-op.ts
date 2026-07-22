@@ -423,6 +423,15 @@ async function dispatch(
           { dataUrl: maskDataUrl },
           false
         )
+        // Task 21: mask rendering (above) is UNCHANGED — only the model
+        // behind 'inpaint' changed (FLUX Fill -> gpt-image-2). gpt-image-2's
+        // toParams (lib/fal-registry.ts's shared GPT_IMAGE_2_EDIT) composes
+        // `image_urls: [imageUrl, ...referenceUrls]` itself, so this just
+        // resolves the optional referenceNodeId -> url the same way the
+        // 'edit' branch above does and hands it through as referenceUrls;
+        // the actual [parentUrl, refUrl].filter(Boolean) composition lives
+        // in the registry mapper, not duplicated here.
+        const refUrl = op.referenceNodeId ? resolveRef(op.referenceNodeId) : undefined
         done(
           await apiPost<OpsResponse>('/api/ops', {
             capability: 'inpaint',
@@ -430,6 +439,7 @@ async function dispatch(
             prompt: op.prompt,
             imageUrl: parentUrl,
             maskUrl,
+            referenceUrls: refUrl ? [refUrl] : undefined,
           })
         )
         break

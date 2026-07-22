@@ -51,11 +51,14 @@ polishing what exists? If no — cut it or park it in "Later".
   same-day "stay SEPARATE" decision below)**: Edit and Inpaint are UNIFIED
   into one region-optional ✦ Edit verb — a "Select region" toggle in the
   Edit tray arms rect-drawing; no region drawn → whole-image edit (model
-  picker, references allowed); a drawn region → dispatches the exact same
-  `{type:'inpaint', model:'flux-fill', rect}` op the old standalone Inpaint
-  verb always sent (op schema/dispatch unchanged), with the model picker
-  locked to "FLUX Fill (region)" and references disabled (not supported for
-  region fills) while a region is active. ~~Edit and Inpaint stay SEPARATE
+  picker, references allowed); a drawn region → dispatches a
+  `{type:'inpaint', model:'gpt-image-2', rect, referenceNodeId?}` op (op
+  schema unchanged in shape, `referenceNodeId` added Task 21), with the
+  model picker locked to "GPT Image 2 (region)" — the sole regionCapable
+  model — and references ENABLED while a region is active (Task 21: gpt-image-2
+  takes a reference image in the same masked-edit call; FLUX Fill, which
+  this locked field showed pre-Task-21 and which never took a reference at
+  all, was removed from the registry). ~~Edit and Inpaint stay SEPARATE
   verbs (different contracts: model-discretion whole-image edit vs
   mask-guaranteed region fill — both AI model calls)~~ (superseded). ✦ Vary
   REMOVED (it was edit + canned prompt; servable by Edit directly).
@@ -96,11 +99,15 @@ polishing what exists? If no — cut it or park it in "Later".
   Fallback if the Saturday 2-hr tldraw spike fails: React Flow as originally
   designed (see spec §4 history).
 - **Models via fal**, behind a small capability registry with one default per
-  capability (generate → FLUX 1.1 pro, edit → nano-banana, inpaint → FLUX
-  Fill) plus optional alternates (edit → FLUX Kontext, generate → Seedream).
-  Swapping/adding a model = editing a registry entry. ✦ panels show a model
-  picker only where >1 model is registered — comparing models across sibling
-  nodes is an intentional iteration axis.
+  capability. As of Task 21 (2026-07-21): generate/edit share the same
+  lineup — nano-banana (default), gpt-image-2, seedream-5-lite (generate
+  also keeps flux-1.1-pro); inpaint → gpt-image-2 ONLY (FLUX Fill and
+  flux-kontext removed from the registry entirely — see "Whack-a-mole
+  editing" above for why FLUX Fill specifically was cut, not just
+  deprioritized). Swapping/adding a model = editing a registry entry. ✦
+  panels show a model picker only where >1 model is registered for a
+  capability — inpaint has exactly one now, so its "picker" is a locked
+  read-only field instead (CommandBar.tsx's region-active branch).
 - **Op dispatch**: direct primitives, no LLM in the operation loop. Ops are
   serializable recipes through one `runOp` entry point; a future agent is just
   another producer of ops (that's what "smart routing → Later" means).

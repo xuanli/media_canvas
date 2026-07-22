@@ -59,7 +59,7 @@ export const IMAGE_NODE_W = 240
 // id lib/run-op.ts's runEdit always dispatches for a region-fill op. Keep
 // in sync with the registry the same way those two lists already are.
 const MODEL_LABELS: Record<string, string> = {
-  'nano-banana': 'Nano Banana',
+  'nano-banana': 'Nano Banana 2',
   'gpt-image-2': 'GPT Image 2',
   'seedream-5-lite': 'Seedream 5 Lite',
   'flux-1.1-pro': 'FLUX 1.1',

@@ -73,6 +73,20 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
         })
       }
 
+      // Bug fix (user-reported 2026-07-21): deleting a node left its bound
+      // arrows dangling on the canvas. tldraw removes the BINDING when a bound
+      // shape is deleted, but keeps the arrow shape itself. Cascade-delete
+      // every arrow bound to a deleted image-node (both directions: parent
+      // edges and ref edges). The image-node type guard prevents recursion
+      // when the arrows themselves are then deleted.
+      const stopCascade = editor.sideEffects.registerBeforeDeleteHandler('shape', (shape) => {
+        if (shape.type !== 'image-node') return
+        const arrowIds = editor
+          .getBindingsToShape(shape.id, 'arrow')
+          .map((b) => b.fromId)
+        if (arrowIds.length) editor.deleteShapes(arrowIds)
+      })
+
       let stopSaveSync: (() => void) | null = null
       let cancelled = false
       void (async () => {
@@ -90,6 +104,7 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
       })()
       return () => {
         cancelled = true
+        stopCascade()
         stopSaveSync?.()
       }
     },

@@ -11,8 +11,10 @@ build history live in `docs/` and this repo's git log (see
 ## The three problems it answers
 
 1. **Whack-a-mole editing** — ask a model to change one thing, it changes
-   five. Media Lab answers this with rect-region inpainting (pixels
-   outside the region are guaranteed untouched) plus cheap side-by-side
+   five. Media Lab answers this with instruction-based rect-region editing
+   (draw a region, describe the *change* to it — "make it blue" — via
+   GPT Image 2's masked edit, which edits the existing content in place
+   rather than regenerating it from a prompt) plus cheap side-by-side
    variant branching, so you can compare instead of gambling on one shot.
 2. **Chat is the wrong UI for visual work** — no spatial history, no easy
    way to go back and try something different from version 3. Media Lab
@@ -103,10 +105,13 @@ fal.ai models + fal.media CDN (images)          Vercel Blob (canvas JSON)
   another producer of these same op objects.
 - **Capability registry, not hardcoded model calls.** `lib/fal-registry.ts`
   maps `capability → { default model, alternates, param mapper }`
-  (`generate → FLUX 1.1 [pro]`, `edit → nano-banana` (alt: FLUX Kontext),
-  `inpaint → FLUX Fill`). Swapping or adding a model is one registry entry;
-  the ✦ panel only shows a model picker where more than one model is
-  registered for a capability.
+  (`generate → nano-banana` (alts: gpt-image-2, seedream-5-lite,
+  flux-1.1-pro), `edit → nano-banana` (alts: gpt-image-2, seedream-5-lite),
+  `inpaint → gpt-image-2` only — a masked *instruction* edit, "make it
+  blue", not a generative-fill model describing "what appears"; FLUX Fill
+  was removed 2026-07-21 for exactly that gap, see `CLAUDE.md`). Swapping
+  or adding a model is one registry entry; the ✦ panel only shows a model
+  picker where more than one model is registered for a capability.
 - **Canvas-as-URL blob storage.** No accounts, no database. Anyone with a
   canvas's URL can view and branch it (see tradeoffs below).
 

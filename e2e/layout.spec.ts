@@ -87,20 +87,22 @@ for (const width of WIDTHS) {
       await clickNode(node)
       await page.getByRole('button', { name: '✦ Edit' }).click()
       await page.getByRole('button', { name: 'Select region' }).click()
-      await expect(page.getByPlaceholder(/describe what appears in the region/i)).toBeVisible()
+      await expect(page.getByPlaceholder(/describe the change to this region/i)).toBeVisible()
       // Draw an actual rect (not just toggle "Select region" on) — measured
       // (isolated Playwright sweep, see app/globals.css's lift-constant
-      // comment) to add another ~25px to the tray for the "region locked"
-      // badge line, making THIS the true tallest tray state (317px), not
-      // the no-rect-yet toggle state (292px). Exercising the taller state
-      // here is what makes this collision guard meaningful.
+      // comment) to add another ~25px to the tray for the "editing this
+      // region" badge line (Task 21: reworded from "region locked", same
+      // line height/position — see CommandBar.tsx), making THIS the true
+      // tallest tray state (317px), not the no-rect-yet toggle state
+      // (292px). Exercising the taller state here is what makes this
+      // collision guard meaningful.
       const box = await node.boundingBox()
       if (!box) throw new Error('node has no bounding box')
       await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2)
       await page.mouse.down()
       await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8, { steps: 5 })
       await page.mouse.up()
-      await expect(page.getByText(/region locked/i)).toBeVisible()
+      await expect(page.getByText(/editing this region/i)).toBeVisible()
       await assertNoOverlap(page, `armed-edit-with-region@${width}`)
     })
   })

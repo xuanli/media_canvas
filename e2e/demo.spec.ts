@@ -193,14 +193,22 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
 // pointer-drag mechanics as CropOverlay via the shared use-drag-rect.ts
 // hook — see the crop-drag spec above for why real mouse events are used
 // instead of a synthetic ui-store fill), drag a rect, fill the
-// region-specific prompt, Run. Run routes this to the SAME
-// {type:'inpaint', model:'flux-fill', rect} op the old standalone Inpaint
-// verb always dispatched (run-op.ts's dispatch/schema UNCHANGED by this
-// task) — asserted via the resulting child's 'v2 · inpaint' label and the
-// arrow's 'inpaint' text label, mirroring how the plain-edit spec above
-// asserts 'v2 · edit'. Also exercises the region-active locks (model
-// picker replaced by a disabled "FLUX Fill (region)" field, "+ Reference"
-// gone since none was attached) and the "region locked" badge.
+// region-specific prompt, Run. Run routes this to the {type:'inpaint', ...}
+// op (run-op.ts's dispatch/schema unchanged in shape by this task) —
+// asserted via the resulting child's 'v2 · inpaint' label and the arrow's
+// 'inpaint' text label, mirroring how the plain-edit spec above asserts
+// 'v2 · edit'.
+// Task 21 (REVISED per user 2026-07-21): FLUX Fill was removed entirely —
+// the inpaint capability's only model is now gpt-image-2 (instruction-based
+// masked edit, not generative fill). Updated here: the region placeholder
+// ("describe the change to this region…"), the locked model field
+// ("GPT Image 2 (region)", was "FLUX Fill (region)"), and the badge
+// ("editing this region", was "region locked — pixels outside can't
+// change" — that hard-guarantee wording described FLUX Fill's compositing
+// behavior, which gpt-image-2 doesn't do). "+ Reference" is no longer
+// force-disabled in region mode (gpt-image-2 accepts references; this spec
+// doesn't attach one, so its absence here is just "not exercised", not
+// "disabled" — see the reference-pick spec below for +Reference coverage).
 test('edit tray region toggle: drag draws a region, Run dispatches inpaint', async ({ page }) => {
   const { errors, canvasResponses } = await newCanvas(page)
   await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
@@ -213,7 +221,7 @@ test('edit tray region toggle: drag draws a region, Run dispatches inpaint', asy
   await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible()
 
   await page.getByRole('button', { name: 'Select region' }).click()
-  await expect(page.getByPlaceholder(/describe what appears in the region/i)).toBeVisible()
+  await expect(page.getByPlaceholder(/describe the change to this region/i)).toBeVisible()
 
   const box = await node.boundingBox()
   if (!box) throw new Error('node has no bounding box')
@@ -228,10 +236,10 @@ test('edit tray region toggle: drag draws a region, Run dispatches inpaint', asy
   await page.mouse.up()
 
   // Region-active locks + badge (brief: "Drawn region -> show badge").
-  await expect(page.getByText(/region locked — pixels outside can.t change/i)).toBeVisible()
-  await expect(page.getByText('FLUX Fill (region)')).toBeVisible()
+  await expect(page.getByText(/editing this region/i)).toBeVisible()
+  await expect(page.getByText('GPT Image 2 (region)')).toBeVisible()
 
-  await page.getByPlaceholder(/describe what appears in the region/i).fill('a small dog')
+  await page.getByPlaceholder(/describe the change to this region/i).fill('make it blue')
   await page.getByRole('button', { name: /^run$/i }).click()
 
   await expect(mockImg(page)).toHaveCount(2, { timeout: 10_000 })
