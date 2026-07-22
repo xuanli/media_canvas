@@ -44,6 +44,10 @@ polishing what exists? If no — cut it or park it in "Later".
   upload+generate; selected = recipe + verb row; armed = tray slides up with
   the verb's controls. Upload-as-root-node is back in scope via the bar.
   Mockups: docs/design/ux-directions.html §v2-chrome.
+- **Verb taxonomy (user decision 2026-07-21)**: Edit and Inpaint stay SEPARATE
+  verbs (different contracts: model-discretion whole-image edit vs
+  mask-guaranteed region fill — both AI model calls); ✦ Vary REMOVED (it was
+  edit + canned prompt; servable by Edit directly).
 - **Toolset UX**: one flat action menu on the selected node (v1; verbs move
   into the command bar in v2 chrome); AI ops carry a ✦
   spark badge (model call, ~seconds, N variants), instant ops don't (free, live
