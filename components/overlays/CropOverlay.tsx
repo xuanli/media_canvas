@@ -29,6 +29,7 @@ export function CropOverlay() {
   const setCropFrac = useUiStore((s) => s.setCropFrac)
   const setArmedTool = useUiStore((s) => s.setArmedTool)
   const { containerRef, onPointerDown, onPointerMove, onPointerUp } = useDragRect(
+    cropFrac,
     setCropFrac,
     () => setArmedTool(null)
   )
@@ -67,6 +68,7 @@ export function CropOverlay() {
             boxShadow: '0 0 0 9999px rgba(0,0,0,.55)',
             border: '1px solid #2dd4bf',
             boxSizing: 'border-box',
+            cursor: 'move',
           }}
         />
       )}

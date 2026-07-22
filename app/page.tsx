@@ -7,6 +7,7 @@ import { color, metric, type as typeTok, buttonPrimary, inputField } from '@/lib
 import { IconX } from '@/components/icons'
 import { MediaLabMark } from '@/components/TopNav'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 // Task 17: "Your canvases" reads the same `gm-recent` localStorage list
 // TopNav.tsx maintains (id/label/at, cap 10) — TopNav is the sole WRITER
@@ -153,10 +154,15 @@ export default function Home() {
         fontFamily: typeTok.fontUi,
       }}
     >
+      {/* Theme toggle, top right (user 2026-07-21). No editor on this page —
+          the canvas picks the stored theme up on its own mount. */}
+      <div style={{ position: 'absolute', top: 12, right: 12 }}>
+        <ThemeToggle />
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <MediaLabMark size={56} />
-          <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>Media Lab</div>
+          <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>Media Canvas</div>
         </div>
         <div style={{ fontSize: 17, color: color.text, opacity: 0.85, maxWidth: 560, lineHeight: 1.5 }}>
           A canvas where every generation and edit is a branch you can compare and refine.

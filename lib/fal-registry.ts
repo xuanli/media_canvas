@@ -135,8 +135,8 @@ export const REGISTRY: Record<
     default: 'nano-banana',
     models: {
       'nano-banana': {
-        id: 'fal-ai/nano-banana-2', // upgraded from fal-ai/nano-banana (user 2026-07-21; probe: .superpowers/sdd/nano-banana-2-probe.md). Key stays 'nano-banana' so old node recipes retry correctly.
-        label: 'Nano Banana 2',
+        id: 'fal-ai/nano-banana-pro', // upgraded nano-banana → nano-banana-2 → nano-banana-pro (user 2026-07-21; pro schema verified against live fal API docs: same prompt/aspect_ratio inputs). Key stays 'nano-banana' so old node recipes retry correctly.
+        label: 'Nano Banana Pro',
         toParams: ({ prompt }) => ({ prompt, aspect_ratio: '16:9' }),
       },
       'gpt-image-2': {
@@ -162,6 +162,9 @@ export const REGISTRY: Record<
       'flux-1.1-pro': {
         id: 'fal-ai/flux-pro/v1.1',
         label: 'FLUX 1.1',
+        // Retired from the generate picker (user 2026-07-21) — same
+        // registered-but-hidden retirement flux-kontext got in Task 16b.
+        hidden: true,
         toParams: ({ prompt }) => ({ prompt, image_size: 'landscape_16_9' }),
       },
     },
@@ -198,8 +201,8 @@ export const REGISTRY: Record<
     default: 'nano-banana',
     models: {
       'nano-banana': {
-        id: 'fal-ai/nano-banana-2/edit', // upgraded from fal-ai/nano-banana/edit (same key-stability rationale)
-        label: 'Nano Banana 2',
+        id: 'fal-ai/nano-banana-pro/edit', // upgraded → nano-banana-pro/edit (same key-stability rationale; pro edit schema verified identical: required prompt + image_urls ARRAY)
+        label: 'Nano Banana Pro',
         toParams: ({ prompt, imageUrl, referenceUrls = [] }) => ({
           prompt,
           image_urls: [imageUrl, ...referenceUrls].filter(Boolean),

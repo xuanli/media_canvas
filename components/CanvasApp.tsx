@@ -8,11 +8,14 @@ import { TopNav } from '@/components/TopNav'
 import { CommandBar } from '@/components/CommandBar'
 import { AssetsDrawer } from '@/components/AssetsDrawer'
 import { PasscodeGate } from '@/components/PasscodeGate'
-import { retryShape } from '@/lib/run-op'
+import { createLocalImageRoot, createUploadedRoot, retryShape } from '@/lib/run-op'
+import { rasterizeToPngDataUrl } from '@/components/AssetsDrawer'
 import { startSaveSync } from '@/lib/save-sync'
 import { useUiStore } from '@/lib/ui-store'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
-import { color, metric, type as typeTok } from '@/lib/design'
+import { ConnectOverlay } from '@/components/overlays/ConnectOverlay'
+import { canvasPaint, color, metric, type as typeTok } from '@/lib/design'
+import { getStoredTheme } from '@/components/ThemeToggle'
 import { IconFit, IconMinus, IconPlus } from '@/components/icons'
 
 export function CanvasApp({ canvasId }: { canvasId: string }) {
@@ -34,7 +37,11 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
       // @tldraw/editor types); setting it here always wins over the OS
       // theme, unlike a `system`-following prop. Set synchronously so the
       // first paint is already dark, not just after the snapshot fetch.
-      editor.user.updateUserPreferences({ colorScheme: 'dark' })
+      // Theme support (user 2026-07-21): was a hard-forced 'dark'. The canvas
+      // now follows the app theme (localStorage 'gm-theme', dark default) —
+      // ThemeToggle flips this preference live on toggle, this line only
+      // seeds the initial mount so first paint matches the chrome.
+      editor.user.updateUserPreferences({ colorScheme: getStoredTheme() })
 
       // Design-critique item 2 fix. Root cause (found by tracing the actual
       // render path, not guessing): tldraw 5.2.5's selection ring, resize/
@@ -59,16 +66,23 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
       // tldraw's blue).
       const defaultTheme = editor.getTheme('default')
       if (defaultTheme) {
+        // canvasPaint (not color): these feed ctx.strokeStyle/fillStyle —
+        // canvas paint can't resolve the CSS var() strings the color tokens
+        // became in the theme conversion (2026-07-21).
         const selectionOverride = {
-          selectionStroke: color.accent,
-          selectedContrast: color.accentText,
-          selectionFill: 'rgba(45, 212, 191, 0.20)', // accent-tinted marquee/brush fill
+          selectionStroke: canvasPaint.accent,
+          selectedContrast: canvasPaint.accentText,
+          selectionFill: canvasPaint.selectionFill, // accent-tinted marquee/brush fill
         }
         editor.updateTheme({
           ...defaultTheme,
           colors: {
             ...defaultTheme.colors,
-            light: { ...defaultTheme.colors.light, ...selectionOverride },
+            // Light canvas bg matches globals.css --gm-body-bg (light): a
+            // real step darker than the white cards/bars so they pop —
+            // tldraw's own near-white default made the chrome look washed
+            // out (user 2026-07-21 light-theme contrast pass).
+            light: { ...defaultTheme.colors.light, ...selectionOverride, background: '#e7eaef' },
             dark: { ...defaultTheme.colors.dark, ...selectionOverride },
           },
         })
@@ -147,8 +161,15 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      const { pickingRef, setPickingRef, armedTool, setArmedTool, regionMode, setRegionMode, setCropFrac } =
+      const { pickingRef, setPickingRef, armedTool, setArmedTool, regionMode, setRegionMode, setCropFrac, connectFrom, setConnectFrom } =
         useUiStore.getState()
+      // Connect-in-flight is the topmost tier: Esc cancels the pending
+      // connection (ConnectOverlay renders nothing once cleared) before any
+      // pick/region/tool disarm logic runs.
+      if (connectFrom) {
+        setConnectFrom(null)
+        return
+      }
       if (pickingRef) {
         setPickingRef(false)
         return
@@ -168,8 +189,65 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Drag-drop onto the canvas (user 2026-07-21): accepts (a) asset-drawer
+  // tiles (custom MIME set in AssetsDrawer's onDragStart) and (b) OS image
+  // files. Capture phase so this wins over tldraw's own external-content
+  // drop handling (which would create a raw tldraw image shape outside the
+  // node model). preventDefault/stopPropagation run synchronously; the
+  // upload/placement work continues async after.
+  const onCanvasDragOver = (e: React.DragEvent) => {
+    const t = e.dataTransfer.types
+    if (t.includes('application/x-gm-asset') || t.includes('Files')) {
+      e.preventDefault()
+      e.stopPropagation()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }
+  const onCanvasDrop = (e: React.DragEvent) => {
+    const editor = editorRef.current
+    if (!editor) return
+    const gm = e.dataTransfer.getData('application/x-gm-asset')
+    const file = e.dataTransfer.files?.[0]
+    if (!gm && !file) return
+    e.preventDefault()
+    e.stopPropagation()
+    const at = editor.screenToPage({ x: e.clientX, y: e.clientY })
+    void (async () => {
+      try {
+        if (gm) {
+          const item = JSON.parse(gm) as { url: string; name: string; preset?: boolean }
+          // Perceived-speed rework (user 2026-07-21): presets/files place
+          // instantly from the local dataURL and sync to blob in the
+          // background; library assets place an immediate pending
+          // placeholder that fills in as the image loads.
+          if (item.preset) {
+            await createLocalImageRoot(editor, await rasterizeToPngDataUrl(item.url), item.name, { at })
+          } else {
+            await createUploadedRoot(editor, item.url, item.name, { at })
+          }
+        } else if (file && file.type.startsWith('image/')) {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.onerror = () => reject(new Error('could not read the file'))
+            reader.readAsDataURL(file)
+          })
+          await createLocalImageRoot(editor, dataUrl, file.name, { at })
+        }
+      } catch {
+        // Drop is a convenience path — the drawer/upload buttons surface
+        // errors; a failed drop just doesn't place a node.
+      }
+    })()
+  }
+
   return (
-    <div style={{ position: 'fixed', inset: 0 }} data-canvas-id={canvasId}>
+    <div
+      style={{ position: 'fixed', inset: 0 }}
+      data-canvas-id={canvasId}
+      onDragOverCapture={onCanvasDragOver}
+      onDropCapture={onCanvasDrop}
+    >
       <PasscodeGate>
         {/* hideUi removes tldraw's default toolbar/menus (installed prop,
             verified in node_modules @tldraw/editor TldrawBaseProps) — our own
@@ -182,12 +260,19 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
           // Double-clicking empty canvas creates a text shape by default —
           // stray text shapes make no sense in an image-node canvas.
           options={{ createTextOnCanvasDoubleClick: false }}
+          // User 2026-07-21: tldraw's right-click context menu still renders
+          // under hideUi and exposes ops that bypass this app's model (Move
+          // to page, Export as, …). Nulling the component override is the
+          // supported removal (ContextMenu?: ComponentType | null, verified
+          // in the installed 5.2.5 TLUiComponents).
+          components={{ ContextMenu: null }}
         >
           <TopNav canvasId={canvasId} />
           <CommandBar />
         <AssetsDrawer />
           <EmptyHint />
           <ZoomCluster />
+          <ConnectOverlay />
         </Tldraw>
       </PasscodeGate>
     </div>
@@ -296,9 +381,12 @@ function ZoomCluster() {
       // !important fight against an inline style.
       className={`gm-zoom-cluster${assetsDrawerOpen ? " gm-zoom-cluster--shifted" : ""}`}
       title={`Zoom: ${percent}%`}
+      // Vertical stack (user 2026-07-21): +, %, −, Fit top-to-bottom; the
+      // between-button separators moved from borderLeft to borderTop.
       style={{
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column',
+        alignItems: 'stretch',
         background: color.barBg,
         border: `1px solid ${color.border}`,
         borderRadius: metric.radius,
@@ -309,31 +397,6 @@ function ZoomCluster() {
       }}
     >
       <button
-        className="gm-icon-btn"
-        style={btnStyle}
-        aria-label="Zoom out"
-        title="Zoom out"
-        onClick={() => editor.zoomOut(undefined, { animation: { duration: 120 } })}
-      >
-        <IconMinus size={14} />
-      </button>
-      <button
-        className="gm-icon-btn gm-zoom-percent"
-        style={{
-          ...btnStyle,
-          width: 48,
-          borderLeft: `1px solid ${color.border}`,
-          borderRight: `1px solid ${color.border}`,
-          color: color.text,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-        aria-label="Reset zoom to 100%"
-        title="Reset zoom to 100%"
-        onClick={() => editor.resetZoom(undefined, { animation: { duration: 120 } })}
-      >
-        {percent}%
-      </button>
-      <button
         className="gm-icon-btn gm-zoom-plus"
         style={btnStyle}
         aria-label="Zoom in"
@@ -343,8 +406,33 @@ function ZoomCluster() {
         <IconPlus size={14} />
       </button>
       <button
+        className="gm-icon-btn gm-zoom-percent"
+        style={{
+          ...btnStyle,
+          width: '100%',
+          borderTop: `1px solid ${color.border}`,
+          color: color.text,
+          fontVariantNumeric: 'tabular-nums',
+          fontSize: 10,
+        }}
+        aria-label="Reset zoom to 100%"
+        title="Reset zoom to 100%"
+        onClick={() => editor.resetZoom(undefined, { animation: { duration: 120 } })}
+      >
+        {percent}%
+      </button>
+      <button
         className="gm-icon-btn"
-        style={{ ...btnStyle, width: 'auto', padding: '0 10px', gap: 6, borderLeft: `1px solid ${color.border}` }}
+        style={{ ...btnStyle, borderTop: `1px solid ${color.border}` }}
+        aria-label="Zoom out"
+        title="Zoom out"
+        onClick={() => editor.zoomOut(undefined, { animation: { duration: 120 } })}
+      >
+        <IconMinus size={14} />
+      </button>
+      <button
+        className="gm-icon-btn"
+        style={{ ...btnStyle, borderTop: `1px solid ${color.border}` }}
         aria-label={hasSelection ? 'Fit to selection' : 'Fit to content'}
         title={hasSelection ? 'Fit to selection' : 'Fit to content'}
         onClick={() =>
@@ -354,7 +442,6 @@ function ZoomCluster() {
         }
       >
         <IconFit size={14} />
-        Fit
       </button>
     </div>
   )

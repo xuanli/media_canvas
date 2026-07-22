@@ -1,5 +1,5 @@
 import { createShapeId, toRichText, type Editor, type TLShapeId } from 'tldraw'
-import type { Operation, OpsResponse } from '@/lib/types'
+import { opLabel, type Operation, type OpsResponse } from '@/lib/types'
 import { nextSeq, placeChildren, GAP_X } from '@/lib/tree'
 import { apiPost } from '@/lib/api-client'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
@@ -139,7 +139,7 @@ export function runOp(
         name: parent ? (parent.props.name ?? '') : rootName,
       },
     })
-    if (parent) createArrow(editor, parent.id, id, op.type)
+    if (parent) createArrow(editor, parent.id, id, opLabel(op.type))
     // Fix round 1 (task-12-report.md, Finding 3): refFromId is captured at
     // pick time and this loop can run some time later (async dispatch below
     // hasn't even started yet, but variants>1 already stretches this out) —
@@ -163,15 +163,28 @@ export function runOp(
 export async function runInstantOp(
   editor: Editor,
   sourceId: TLShapeId,
-  op: Extract<Operation, { type: 'crop' } | { type: 'resize' }>
+  op: Extract<Operation, { type: 'crop' | 'resize' | 'rotate' | 'flip' | 'transform' | 'adjust' | 'redact' }>
 ): Promise<void> {
   const parent = nodes(editor).find((s) => s.id === sourceId)
   if (!parent) return
-  const { cropImage, resizeImage } = await import('@/lib/instant-ops')
+  const { cropImage, resizeImage, rotateImage, flipImage, transformImage, adjustImage, redactRegion } = await import(
+    '@/lib/instant-ops'
+  )
+  const src = parent.props.assetUrl
   const out =
     op.type === 'crop'
-      ? await cropImage(parent.props.assetUrl, op.rect)
-      : await resizeImage(parent.props.assetUrl, op.width, op.height)
+      ? await cropImage(src, op.rect)
+      : op.type === 'resize'
+        ? await resizeImage(src, op.width, op.height)
+        : op.type === 'rotate'
+          ? await rotateImage(src, op.deg)
+          : op.type === 'flip'
+            ? await flipImage(src, op.axis)
+            : op.type === 'transform'
+              ? await transformImage(src, op.deg, op.flipH, op.flipV)
+              : op.type === 'adjust'
+                ? await adjustImage(src, op.brightness, op.contrast, op.saturation)
+                : await redactRegion(src, op.rect, op.mode, op.amount)
   const all = nodes(editor)
   const [spot] = placeChildren(
     { x: parent.x, y: parent.y, w: parent.props.w, h: parent.props.h },
@@ -199,7 +212,7 @@ export async function runInstantOp(
       name: parent.props.name ?? '',
     },
   })
-  createArrow(editor, parent.id, id, op.type)
+  createArrow(editor, parent.id, id, opLabel(op.type))
   try {
     const { url } = await apiPost<{ url: string }>('/api/upload', { dataUrl: out.dataUrl }, false)
     editor.updateShape<ImageNodeShape>({ id, type: 'image-node', props: { assetUrl: url } })
@@ -217,48 +230,109 @@ export async function runInstantOp(
 // dispatch()'s done() backfill in this file) since /api/upload doesn't
 // report them. Status is 'done' immediately — unlike runOp's pending->done
 // flow, there's no async model call in flight once the dims are known.
-export function createUploadedRoot(editor: Editor, url: string, filename: string): Promise<TLShapeId> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      const naturalW = img.naturalWidth
-      const naturalH = img.naturalHeight
-      const all = nodes(editor)
-      const parentBox = { x: 100, y: 100 + all.length * 40, w: IMAGE_NODE_W, h: 150 }
-      const [spot] = placeChildren(
-        { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
-        1,
-        // Design-critique item 9 — same root-stacking-gap padding as runOp's
-        // root branch above (an uploaded image is also a root, no parent).
-        all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h + GAP_X }))
-      )
-      const id = createShapeId()
-      editor.createShape<ImageNodeShape>({
-        id,
-        type: 'image-node',
-        x: spot?.x ?? parentBox.x,
-        y: spot?.y ?? parentBox.y,
-        props: {
-          w: IMAGE_NODE_W,
-          h: naturalW ? Math.round(IMAGE_NODE_W * (naturalH / naturalW)) + 18 : 150,
-          seq: nextSeq(all.map((s) => s.props.seq)),
-          status: 'done',
-          kind: 'image',
-          assetUrl: url,
-          naturalW,
-          naturalH,
-          sourceId: null,
-          op: { type: 'upload', filename },
-          createdAt: Date.now(),
-          name: nameFromFilename(filename),
-        },
-      })
-      resolve(id)
-    }
-    img.onerror = () => reject(new Error('could not read the uploaded image'))
-    img.src = url
+export function createUploadedRoot(
+  editor: Editor,
+  url: string,
+  filename: string,
+  // Drag-drop (2026-07-21): `at` = page-space drop point; the node centers
+  // on it instead of taking a placeChildren auto-spot.
+  opts: { at?: { x: number; y: number } } = {}
+): Promise<TLShapeId> {
+  // Perceived-speed rework (user 2026-07-21: "click asset → node shows up
+  // feels slow"): the shape is created IMMEDIATELY as a pending placeholder
+  // (default box, shimmer/"loading image…" from ImageNodeShape's pending
+  // branch) and the image loads in the background — was: wait for the full
+  // image download to measure it before creating anything. onload patches
+  // dims/size/status; onerror flips the node to its error state instead of
+  // rejecting (the placeholder already exists, so the failure has a visible
+  // home). The returned promise resolves with the id right away.
+  const all = nodes(editor)
+  const parentBox = { x: 100, y: 100 + all.length * 40, w: IMAGE_NODE_W, h: 150 }
+  const [spot] = placeChildren(
+    { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
+    1,
+    // Design-critique item 9 — same root-stacking-gap padding as runOp's
+    // root branch above (an uploaded image is also a root, no parent).
+    all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h + GAP_X }))
+  )
+  const id = createShapeId()
+  editor.createShape<ImageNodeShape>({
+    id,
+    type: 'image-node',
+    x: opts.at ? opts.at.x - IMAGE_NODE_W / 2 : (spot?.x ?? parentBox.x),
+    y: opts.at ? opts.at.y - 75 : (spot?.y ?? parentBox.y),
+    props: {
+      w: IMAGE_NODE_W,
+      h: 150,
+      seq: nextSeq(all.map((s) => s.props.seq)),
+      status: 'pending',
+      kind: 'image',
+      assetUrl: url,
+      naturalW: 0,
+      naturalH: 0,
+      sourceId: null,
+      op: { type: 'upload', filename },
+      createdAt: Date.now(),
+      name: nameFromFilename(filename),
+    },
   })
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    if (!editor.getShape(id)) return // deleted while loading
+    const naturalW = img.naturalWidth
+    const naturalH = img.naturalHeight
+    // User-reported 2026-07-21 ("why is an added asset so small?"): scale
+    // display width with natural width (quarter-size), floored at the old
+    // 240 default and capped so a 4K drop doesn't swallow the canvas.
+    const dispW = naturalW ? Math.max(IMAGE_NODE_W, Math.min(480, Math.round(naturalW / 4))) : IMAGE_NODE_W
+    const dispH = naturalW ? Math.round(dispW * (naturalH / naturalW)) + 18 : 150
+    editor.updateShape<ImageNodeShape>({
+      id,
+      type: 'image-node',
+      // Re-center on the drop point now that the real size is known.
+      ...(opts.at ? { x: opts.at.x - dispW / 2, y: opts.at.y - dispH / 2 } : {}),
+      props: { w: dispW, h: dispH, naturalW, naturalH, status: 'done' },
+    })
+  }
+  img.onerror = () => {
+    if (!editor.getShape(id)) return
+    editor.updateShape<ImageNodeShape>({
+      id,
+      type: 'image-node',
+      props: { status: 'error', errorMessage: 'could not load image' },
+    })
+  }
+  img.src = url
+  return Promise.resolve(id)
+}
+
+// Same as createUploadedRoot but for an image that only exists locally as a
+// dataURL (asset-tile placement, direct uploads, OS-file drops): the node
+// renders INSTANTLY from the dataURL — no network before first paint — and
+// the CDN upload happens in the background, swapping assetUrl on success or
+// flagging 'unsynced' on failure (same badge contract as runInstantOp's
+// background upload above).
+export async function createLocalImageRoot(
+  editor: Editor,
+  dataUrl: string,
+  filename: string,
+  opts: { at?: { x: number; y: number } } = {}
+): Promise<TLShapeId> {
+  const id = await createUploadedRoot(editor, dataUrl, filename, opts)
+  void (async () => {
+    try {
+      const { url } = await apiPost<{ url: string }>('/api/upload', { dataUrl }, false)
+      if (editor.getShape(id)) {
+        editor.updateShape<ImageNodeShape>({ id, type: 'image-node', props: { assetUrl: url } })
+      }
+    } catch {
+      if (editor.getShape(id)) {
+        editor.updateShape<ImageNodeShape>({ id, type: 'image-node', props: { errorCode: 'unsynced' } })
+      }
+    }
+  })()
+  return id
 }
 
 export function retryShape(
@@ -416,46 +490,87 @@ async function dispatch(
       }
       case 'inpaint': {
         if (!parentUrl) throw new Error('inpaint requires a source image')
-        // The mask canvas must match the SOURCE (parent) image's natural
-        // size — the child being dispatched here doesn't have one yet.
-        // `shapeId`'s own `sourceId` points at that parent node.
-        const child = nodes(editor).find((s) => s.id === shapeId)
-        const parent = child?.props.sourceId
-          ? nodes(editor).find((s) => s.id === child.props.sourceId)
-          : undefined
-        if (!parent) throw new Error('inpaint could not locate the source node for mask sizing')
-        const { renderRectMask } = await import('@/lib/instant-ops')
-        const maskDataUrl = await renderRectMask(op.rect, parent.props.naturalW, parent.props.naturalH)
-        const { url: maskUrl } = await apiPost<{ url: string }>(
-          '/api/upload',
-          { dataUrl: maskDataUrl },
-          false
-        )
-        // Task 21: mask rendering (above) is UNCHANGED — only the model
-        // behind 'inpaint' changed (FLUX Fill -> gpt-image-2). gpt-image-2's
-        // toParams (lib/fal-registry.ts's shared GPT_IMAGE_2_EDIT) composes
-        // `image_urls: [imageUrl, ...referenceUrls]` itself, so this just
-        // resolves the optional referenceNodeId -> url the same way the
-        // 'edit' branch above does and hands it through as referenceUrls;
-        // the actual [parentUrl, refUrl].filter(Boolean) composition lives
-        // in the registry mapper, not duplicated here.
         const inpaintRefIds = [...(op.referenceNodeIds ?? []), ...(op.referenceNodeId ? [op.referenceNodeId] : [])]
         const inpaintRefUrls = inpaintRefIds.map((id) => resolveRef(id)).filter((u): u is string => !!u)
-        done(
-          await apiPost<OpsResponse>('/api/ops', {
-            capability: 'inpaint',
+        // Two region strategies by model capability (user 2026-07-21):
+        //   gpt-image-2 — EXACT: the only registered model with a mask_url
+        //     param; pixel mask, capability 'inpaint' (Task 21 path,
+        //     unchanged).
+        //   anything else (nano-banana, seedream) — GUIDED: no mask param
+        //     exists, so the rect is drawn ONTO the image as a red outline
+        //     (instant-ops.annotateRegion) and the prompt instructs the
+        //     model to edit only inside it and erase the box. Routed through
+        //     capability 'edit' — no registry change needed. Verified live
+        //     against nano-banana-pro/edit before wiring (see
+        //     annotateRegion's comment).
+        if (op.model === 'gpt-image-2') {
+          // The mask canvas must match the SOURCE (parent) image's natural
+          // size — the child being dispatched here doesn't have one yet.
+          // `shapeId`'s own `sourceId` points at that parent node.
+          const child = nodes(editor).find((s) => s.id === shapeId)
+          const parent = child?.props.sourceId
+            ? nodes(editor).find((s) => s.id === child.props.sourceId)
+            : undefined
+          if (!parent) throw new Error('inpaint could not locate the source node for mask sizing')
+          const { renderRectMask } = await import('@/lib/instant-ops')
+          const maskDataUrl = await renderRectMask(op.rect, parent.props.naturalW, parent.props.naturalH)
+          const { url: maskUrl } = await apiPost<{ url: string }>(
+            '/api/upload',
+            { dataUrl: maskDataUrl },
+            false
+          )
+          // Task 21: gpt-image-2's toParams (lib/fal-registry.ts's shared
+          // GPT_IMAGE_2_EDIT) composes `image_urls: [imageUrl,
+          // ...referenceUrls]` itself; this just hands refs through.
+          done(
+            await apiPost<OpsResponse>('/api/ops', {
+              capability: 'inpaint',
+              model: op.model,
+              prompt: op.prompt,
+              imageUrl: parentUrl,
+              maskUrl,
+              referenceUrls: inpaintRefUrls.length ? inpaintRefUrls : undefined,
+            })
+          )
+        } else {
+          const { annotateRegion, compositeRegion } = await import('@/lib/instant-ops')
+          const annotatedDataUrl = await annotateRegion(parentUrl, op.rect)
+          const { url: annotatedUrl } = await apiPost<{ url: string }>(
+            '/api/upload',
+            { dataUrl: annotatedDataUrl },
+            false
+          )
+          const resp = await apiPost<OpsResponse>('/api/ops', {
+            capability: 'edit',
             model: op.model,
-            prompt: op.prompt,
-            imageUrl: parentUrl,
-            maskUrl,
+            prompt: `Apply the following change ONLY inside the red rectangle outline drawn on the image. Keep everything outside the rectangle exactly the same, and remove the red rectangle from the final output. Change: ${op.prompt}`,
+            imageUrl: annotatedUrl,
             referenceUrls: inpaintRefUrls.length ? inpaintRefUrls : undefined,
           })
-        )
+          // Deterministic composite (user-reported 2026-07-22: the model kept
+          // the red box in real runs): model pixels survive only INSIDE the
+          // rect, the original everywhere else — hard guarantee that the
+          // annotation stroke (drawn outside the rect) is gone and outside
+          // pixels are untouched. The composited image is re-uploaded so the
+          // node's assetUrl is durable like every other result.
+          const out = await compositeRegion(parentUrl, resp.imageUrl, op.rect)
+          const { url: compositedUrl } = await apiPost<{ url: string }>(
+            '/api/upload',
+            { dataUrl: out.dataUrl },
+            false
+          )
+          done({ imageUrl: compositedUrl, width: out.width, height: out.height })
+        }
         break
       }
       case 'upload':
       case 'crop':
       case 'resize':
+      case 'rotate':
+      case 'flip':
+      case 'transform':
+      case 'adjust':
+      case 'redact':
         // Deterministic ops run client-side and update their own node
         // synchronously in their panels (Task 10) — they never reach runOp's
         // async dispatch.

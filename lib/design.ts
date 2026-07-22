@@ -20,36 +20,53 @@
 
 import type { CSSProperties } from 'react'
 
+// Theme support (user 2026-07-21): every value is a var() reference into the
+// palettes defined at the top of app/globals.css (`:root` = dark default,
+// `:root[data-gm-theme='light']` = light). Edit palettes THERE — this object
+// is just the typed access layer, and its var() strings work anywhere CSS
+// does: inline styles, borders, and SVG presentation attributes alike.
 export const color = {
-  // Surfaces (brief: bar #17181b on nav #0f1012)
-  navBg: '#0f1012',
-  barBg: '#17181b',
-  overlayBg: '#1c1d22', // dropdown/menu/tray-header surface, one step up
-  fieldBg: '#0b0c0e',
-  cardBg: '#1a1d22',
+  // Surfaces (dark brief: bar #17181b on nav #0f1012)
+  navBg: 'var(--gm-nav-bg)',
+  barBg: 'var(--gm-bar-bg)',
+  overlayBg: 'var(--gm-overlay-bg)', // dropdown/menu/tray-header surface, one step up
+  fieldBg: 'var(--gm-field-bg)',
+  cardBg: 'var(--gm-card-bg)',
   // Borders
-  border: 'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.16)',
+  border: 'var(--gm-border)',
+  borderStrong: 'var(--gm-border-strong)',
   // Text
-  text: '#e6e9ee',
-  textSecondary: '#9aa3ad',
-  textMuted: '#666f7a',
+  text: 'var(--gm-text)',
+  textSecondary: 'var(--gm-text-secondary)',
+  textMuted: 'var(--gm-text-muted)',
   // Distinct from textMuted (informational/placeholder gray): the original
   // (pre-design-system, task-14) literal for disabled *interactive* text —
   // restored here as its own token after a review caught it having drifted
   // to textMuted during the buttonSecondary() refactor. See verbBtnStyle in
   // CommandBar.tsx for the one call site that opts into it via
   // buttonSecondary's `disabledColor`.
-  textDisabled: '#5b6472',
+  textDisabled: 'var(--gm-text-disabled)',
   // Accent — the ONLY color besides monochrome: primary actions, focus
   // rings, selection/armed states. Everything else stays monochrome.
-  accent: '#2dd4bf',
-  accentText: '#0b2622', // dark text/icon on accent fill
-  accentDim: 'rgba(45,212,191,0.14)', // accent-tinted chip/hover surface
+  accent: 'var(--gm-accent)',
+  accentText: 'var(--gm-accent-text)', // contrast text/icon on accent fill
+  accentDim: 'var(--gm-accent-dim)', // accent-tinted chip/hover surface
   // Status colors (small dots/badges only, never a button fill)
-  success: '#7ec9a2',
-  warning: '#e0c05c',
-  danger: '#d98d80',
+  success: 'var(--gm-success)',
+  warning: 'var(--gm-warning)',
+  danger: 'var(--gm-danger)',
+} as const
+
+// Literal (non-var) colors for the ONE consumer CSS variables can't reach:
+// tldraw's canvas-painted selection chrome (CanvasApp.tsx's
+// editor.updateTheme feeds ctx.strokeStyle/fillStyle — plain JS property
+// reads, no CSS resolution). Selection stays the dark-theme teal in both
+// themes, matching the .tl-container --tl-color-selected override in
+// globals.css.
+export const canvasPaint = {
+  accent: '#2dd4bf',
+  accentText: '#0b2622',
+  selectionFill: 'rgba(45,212,191,0.20)',
 } as const
 
 export const metric = {
@@ -73,10 +90,11 @@ export const type = {
   fontUi: 'system-ui, -apple-system, "Segoe UI", sans-serif',
   // Monospace reserved for recipe/metadata lines only — never chrome labels.
   fontMono: 'ui-monospace, "SF Mono", Menlo, monospace',
-  base: 13,
-  secondary: 12,
-  micro: 11,
-  nano: 9,
+  // Bumped +1 across the scale (user 2026-07-21: "fonts a bit bigger").
+  base: 14,
+  secondary: 13,
+  micro: 12,
+  nano: 10,
 } as const
 
 export const motion = {
@@ -101,7 +119,9 @@ export const motion = {
 // slightly — harmless, presentation-only, and if anything reinforces the
 // parity this task is chasing rather than working against it.
 export const elevation = {
-  bar: '0 18px 44px rgba(0,0,0,0.48), 0 4px 14px rgba(0,0,0,0.32)',
+  // Themed via globals.css (--gm-shadow-bar): dark keeps the original heavy
+  // two-layer shadow, light gets a much softer one (2026-07-21 light pass).
+  bar: 'var(--gm-shadow-bar)',
 } as const
 
 // ── control builders ────────────────────────────────────────────────────
@@ -257,7 +277,7 @@ export function menuSurface(): CSSProperties {
     border: `1px solid ${color.border}`,
     borderRadius: metric.radius,
     padding: 4,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+    boxShadow: 'var(--gm-shadow-menu)',
     boxSizing: 'border-box',
   }
 }

@@ -6,8 +6,11 @@
 //   'add'    — clicking an asset drops it onto the canvas as a root node
 //   'attach' — same, then auto-attaches the new node as the Edit reference
 //              (via pendingRefAttach, consumed by CommandBar)
-// Upload lives at the top of the drawer; uploads land in the library AND on
-// the canvas in one step.
+// Upload lives at the top of the drawer; in 'add' mode it lands in the
+// LIBRARY ONLY (user 2026-07-21 — placing on canvas stays an explicit tile
+// click; the prompt bar's Upload button is the direct-to-canvas path). In
+// 'attach' mode the upload still places-and-attaches, since attaching
+// requires a node.
 //
 // Same fal-reachability routing as before: presets (relative URLs, incl. the
 // SVG logo) are rasterized client-side to PNG and pushed through /api/upload
@@ -16,7 +19,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useEditor } from 'tldraw'
 import { useUiStore } from '@/lib/ui-store'
-import { createUploadedRoot } from '@/lib/run-op'
+import { createLocalImageRoot, createUploadedRoot } from '@/lib/run-op'
 import { apiPost, apiDelete } from '@/lib/api-client'
 import { PRESET_ASSETS } from '@/lib/preset-assets'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -42,7 +45,10 @@ function saveAssets(list: UserAsset[]) {
   }
 }
 
-function rasterizeToPngDataUrl(url: string): Promise<string> {
+// Exported for CanvasApp's drag-drop handler (2026-07-21): a dragged PRESET
+// tile needs the same rasterize-to-PNG + /api/upload path place() uses
+// before it can become a node with a fal-reachable URL.
+export function rasterizeToPngDataUrl(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -124,21 +130,41 @@ export function AssetsDrawer() {
         left: open ? 272 : 0,
         transform: 'translateY(-50%)',
         zIndex: 451,
-        width: 18,
-        height: 64,
+        width: open ? 18 : 26,
+        height: open ? 64 : 108,
         border: `1px solid ${color.border}`,
         borderLeft: open ? undefined : 'none',
         borderRadius: '0 8px 8px 0',
         background: color.navBg,
-        color: color.textSecondary,
+        color: open ? color.textSecondary : color.text,
         cursor: 'pointer',
-        display: 'grid',
-        placeItems: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
         padding: 0,
       }}
-      title={open ? 'collapse assets' : 'assets'}
+      title={open ? 'collapse assets' : 'open assets'}
     >
-      <span style={{ fontSize: 10, transform: open ? 'rotate(180deg)' : undefined }}>›</span>
+      {open ? (
+        <span style={{ fontSize: 10, transform: 'rotate(180deg)' }}>›</span>
+      ) : (
+        <>
+          <span style={{ fontSize: 10 }}>›</span>
+          {/* vertical label so the collapsed tab self-identifies */}
+          <span
+            style={{
+              writingMode: 'vertical-rl',
+              fontSize: typeTok.micro,
+              fontFamily: typeTok.fontUi,
+              letterSpacing: 1,
+            }}
+          >
+            Assets
+          </span>
+        </>
+      )}
     </button>
   )
 
@@ -160,12 +186,15 @@ export function AssetsDrawer() {
     setBusy(item.key)
     setError(null)
     try {
-      let url = item.url
-      if (item.preset) {
-        const dataUrl = await rasterizeToPngDataUrl(item.url)
-        url = (await apiPost<{ url: string }>('/api/upload', { dataUrl }, false)).url
-      }
-      const nodeId = await createUploadedRoot(editor, url, item.name)
+      // Perceived-speed rework (user 2026-07-21): presets rasterize locally
+      // (fast) and the node appears INSTANTLY from the dataURL via
+      // createLocalImageRoot — the blob upload happens in the background
+      // ('unsynced' badge on failure). Library assets already have a hosted
+      // URL; createUploadedRoot now places an immediate pending placeholder
+      // and patches in the image as it loads.
+      const nodeId = item.preset
+        ? await createLocalImageRoot(editor, await rasterizeToPngDataUrl(item.url), item.name)
+        : await createUploadedRoot(editor, item.url, item.name)
       finishPlace(nodeId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not place image')
@@ -191,8 +220,15 @@ export function AssetsDrawer() {
       const name = file.name.replace(/\.[^.]+$/, '')
       saveAssets([{ id: res.id, url: res.url, name, at: Date.now() }, ...loadAssets()])
       setAssetsVersion((v) => v + 1)
-      const nodeId = await createUploadedRoot(editor, res.url, file.name)
-      finishPlace(nodeId)
+      // User 2026-07-21: uploading to assets is a LIBRARY action — it must
+      // not also drop the image on the canvas. Placing stays explicit
+      // (click the tile → place()). Exception: 'attach' mode — the upload's
+      // whole purpose there is to become the Edit reference, which needs a
+      // node on canvas, so that path keeps the old place-and-attach flow.
+      if (assetsDrawer === 'attach') {
+        const nodeId = await createUploadedRoot(editor, res.url, file.name)
+        finishPlace(nodeId)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'upload failed')
     } finally {
@@ -259,6 +295,17 @@ export function AssetsDrawer() {
             <button
               onClick={() => void place(item)}
               disabled={busy !== null}
+              // Drag-drop to canvas (user 2026-07-21): the tile carries its
+              // url/name/preset flag as a custom MIME entry; CanvasApp's
+              // capture-phase drop handler places it at the drop point.
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  'application/x-gm-asset',
+                  JSON.stringify({ url: item.url, name: item.name, preset: item.preset })
+                )
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
               title={assetsDrawer === 'attach' ? `use "${item.name}" as the reference` : `add "${item.name}" to the canvas`}
               style={{
                 width: 116,
@@ -272,8 +319,16 @@ export function AssetsDrawer() {
                 opacity: busy === item.key ? 0.5 : 1,
               }}
             >
+              {/* objectFit contain (was cover — cropped wide logos to "Komo")
+                  over the gm-alpha-check backing so transparent brand marks
+                  stay visible in both themes. */}
               {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary data/blob URLs */}
-              <img src={item.url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <img
+                src={item.url}
+                alt={item.name}
+                className="gm-alpha-check"
+                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+              />
             </button>
             {item.deletableId && (
               <button

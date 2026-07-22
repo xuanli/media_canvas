@@ -23,12 +23,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent } from 'react'
 import { useEditor, useValue, type TLShapeId } from 'tldraw'
 import { useUiStore } from '@/lib/ui-store'
-import { runOp, runInstantOp, createUploadedRoot } from '@/lib/run-op'
-import { apiPost } from '@/lib/api-client'
+import { runOp, runInstantOp, createLocalImageRoot } from '@/lib/run-op'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import type { RectFrac } from '@/lib/types'
 import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton, elevation } from '@/lib/design'
-import { IconChevronDown, IconDownload, IconUpload, IconX } from '@/components/icons'
+import { IconDownload, IconUpload, IconX } from '@/components/icons'
 
 // ── Ported verbatim from Inspector.tsx (task-10/11 fix-round comments kept) ──
 
@@ -92,7 +91,7 @@ function fracToNaturalRect(f: RectFrac, naturalW: number, naturalH: number) {
 // from the picker, still registered/callable). Both lists must be updated
 // together when the registry's edit model set changes.
 const EDIT_MODELS = [
-  { id: 'nano-banana', label: 'Nano Banana 2' },
+  { id: 'nano-banana', label: 'Nano Banana Pro' },
   { id: 'gpt-image-2', label: 'GPT Image 2' },
   { id: 'seedream-5-lite', label: 'Seedream 5 Lite' },
 ] as const
@@ -101,10 +100,12 @@ const EDIT_MODELS = [
 // (nano-banana first) matches `REGISTRY.generate.default`. Both lists must
 // be updated together when the registry's generate model set changes.
 const GENERATE_MODELS = [
-  { id: 'nano-banana', label: 'Nano Banana 2' },
+  // FLUX 1.1 retired from the picker (user 2026-07-21) — same pattern as
+  // flux-kontext in EDIT_MODELS: hidden in the registry, still registered/
+  // callable so nodes created with it retry fine.
+  { id: 'nano-banana', label: 'Nano Banana Pro' },
   { id: 'gpt-image-2', label: 'GPT Image 2' },
   { id: 'seedream-5-lite', label: 'Seedream 5 Lite' },
-  { id: 'flux-1.1-pro', label: 'FLUX 1.1' },
 ] as const
 
 // verbs shown in both the SELECTED calm bar and pinned to the ARMED tray's
@@ -120,6 +121,9 @@ const VERBS = [
   ['edit', '✦ Edit'],
   ['crop', 'Crop'],
   ['resize', 'Resize'],
+  ['transform', 'Rotate/Flip'],
+  ['adjust', 'Adjust'],
+  ['redact', 'Redact'],
 ] as const
 
 // ── Task 15B styling: built on lib/design.ts tokens (was ad-hoc inline
@@ -162,8 +166,6 @@ const BAR_PADDING = 10
 const field: CSSProperties = inputField()
 
 const stepBtn: CSSProperties = stepButton()
-
-const primaryBtn: CSSProperties = buttonPrimary()
 
 function verbBtnStyle(active: boolean, disabled: boolean): CSSProperties {
   // Token-fidelity fix (review finding): the pre-design-system verbBtnStyle
@@ -273,6 +275,18 @@ export function CommandBar() {
   const [preset, setPreset] = useState<string>('free')
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
+  // Adjust tray (2026-07-21 deterministic-tools batch): 100 = neutral,
+  // CSS-filter percentage semantics. Re-seeded on every (re-)arm below.
+  const [adjBrightness, setAdjBrightness] = useState(100)
+  const [adjContrast, setAdjContrast] = useState(100)
+  const [adjSaturation, setAdjSaturation] = useState(100)
+  // Redact tray: blur radius / pixel block size in NATURAL px.
+  const [redactMode, setRedactMode] = useState<'blur' | 'pixelate'>('blur')
+  const [redactAmount, setRedactAmount] = useState(16)
+  // Rotate/Flip tray (UX round 2): composed into one 'transform' op on Apply.
+  const [xfDeg, setXfDeg] = useState<0 | 90 | 180 | 270>(0)
+  const [xfFlipH, setXfFlipH] = useState(false)
+  const [xfFlipV, setXfFlipV] = useState(false)
   // Multi-reference (user 2026-07-21): the Edit tray holds N references —
   // repeated + Reference picks append; multi-select normalizes into this.
   const [refIds, setRefIds] = useState<TLShapeId[]>([])
@@ -398,6 +412,7 @@ export function CommandBar() {
   useEffect(() => {
     if (!pendingRefAttach) return
     const rid = pendingRefAttach as TLShapeId
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ordered handoff from the drawer, runs once per parked id (same pattern as the multi-select consume below)
     setRefIds((prev) => (prev.includes(rid) ? prev : [...prev, rid]))
     setPendingRefAttach(null)
     // combined-mode rule: an asset pick ends the canvas-pick half too
@@ -422,7 +437,7 @@ export function CommandBar() {
     const queued = pendingMultiRefsRef.current
     if (!queued || !selId) return
     pendingMultiRefsRef.current = null
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ordered handoff, runs once per queue
+     
     setRefIds((prev) => [...new Set([...prev, ...queued])])
   }, [selId])
 
@@ -458,6 +473,50 @@ export function CommandBar() {
     setHeight(sel.props.naturalH)
   }, [armedTool, selId, sel])
 
+  // Camera restore for the region-tools zoom-to-node flow (zoomToNode, in
+  // the SELECTED branch below, saves into this ref): as soon as NO
+  // region-drawing surface is active anymore — regardless of how it ended
+  // (Esc via CanvasApp's global handler, the Select-region toggle, Apply/Run
+  // clearing armedTool, or arming a non-region verb) — glide back to where
+  // the user was. No-op when nothing was saved. Deliberately NOT restored on
+  // deselect-while-armed (sel gone but tool still armed): the user has
+  // clearly moved on, snapping the camera would fight them.
+  const prevCameraRef = useRef<{ x: number; y: number; z: number } | null>(null)
+  // User 2026-07-22: ALL tools zoom now, not just the region-drawing ones —
+  // plain Edit (without region) is the one surface that keeps the camera.
+  const zoomSurfaceActive =
+    (armedTool !== null && armedTool !== 'edit') || (armedTool === 'edit' && regionMode)
+  useEffect(() => {
+    if (zoomSurfaceActive) return
+    const c = prevCameraRef.current
+    if (!c) return
+    prevCameraRef.current = null
+    editor.setCamera(c, { animation: { duration: 220 } })
+  }, [zoomSurfaceActive, editor])
+
+  // Rotate/Flip tray seeds back to identity each time it's (re-)armed.
+  useEffect(() => {
+    if (armedTool !== 'transform') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setXfDeg(0)
+     
+    setXfFlipH(false)
+     
+    setXfFlipV(false)
+  }, [armedTool, selId])
+
+  // Adjust tray seeds back to neutral each time it's (re-)armed for a
+  // selection — same pattern as the resize seed above.
+  useEffect(() => {
+    if (armedTool !== 'adjust') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAdjBrightness(100)
+     
+    setAdjContrast(100)
+     
+    setAdjSaturation(100)
+  }, [armedTool, selId])
+
   // Task 15D (user decision 2026-07-21): the '✦ Vary' verb — and the
   // no-form immediate-fire effect that used to live here — is REMOVED
   // outright, not disabled. It always dispatched `{ type: 'edit', ... }` (no
@@ -487,8 +546,10 @@ export function CommandBar() {
         reader.onerror = () => reject(new Error('could not read the file'))
         reader.readAsDataURL(file)
       })
-      const { url } = await apiPost<{ url: string }>('/api/upload', { dataUrl }, false)
-      await createUploadedRoot(editor, url, file.name)
+      // Perceived-speed rework (user 2026-07-21): node appears instantly
+      // from the local dataURL; the blob upload runs in the background
+      // inside createLocalImageRoot ('unsynced' badge on failure).
+      await createLocalImageRoot(editor, dataUrl, file.name)
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'upload failed')
     } finally {
@@ -508,9 +569,15 @@ export function CommandBar() {
         style={{
           ...barShell,
           padding: BAR_PADDING,
+          // Prompt-bar redesign (user 2026-07-21: "not super well designed"):
+          // the old single row squeezed Upload | textarea | select | button
+          // side by side. Now the prompt is the hero — a full-width,
+          // borderless-looking field on top — with a quiet control row
+          // underneath (Upload left; model + Generate right), the layout
+          // convention of modern prompt bars.
           display: 'flex',
-          gap: 6,
-          alignItems: 'center',
+          flexDirection: 'column',
+          gap: 8,
           // barShell's overflow:hidden exists for the ARMED tray's slide
           // animation; the idle bar must NOT clip — the assets popover
           // renders above the bar (bottom: 100% + 10px) and would be
@@ -526,38 +593,7 @@ export function CommandBar() {
           onChange={(e) => void onUploadChange(e)}
           style={{ display: 'none' }}
         />
-        {/* Task 19b: Upload became the assets popover trigger (Upload new /
-            Your assets / Presets). Accessible name keeps "Upload" so the
-            existing E2E upload selector still resolves; direct file-input
-            path preserved inside the popover. */}
-        <button
-          className="gm-btn"
-          onClick={() => setAssetsDrawer(assetsDrawer ? null : 'add')} // quick toggle; the drawer's own handle handles persistence
-          disabled={uploading}
-          style={buttonSecondary({ disabled: uploading, active: assetsDrawer === 'add' })}
-          title="add an image — upload, your assets, or presets"
-        >
-          <IconUpload size={14} />
-          {uploading ? '…' : 'Upload'}
-          <IconChevronDown size={12} />
-        </button>
-        {/* Task 20 (user feedback 2026-07-21): the idle prompt grows from a
-            single-line input to a multi-line textarea — same textareaField()
-            token language (padding/line-height) the armed Edit tray's prompt
-            already uses, so switching create<->edit reads as one bar, not
-            two UIs. `resize: 'none'` (unlike the tray's `resize: 'vertical'`)
-            since this is the calm/idle state, not an active editing form —
-            keeps the bar's height predictable for the zoom-cluster collision
-            math below. `minHeight: 64` backstops rows=2's natural height
-            (~62px: 2*20px line-height + 20px vertical padding + 2px border)
-            per the brief's "~64px min-height" so it never dips under that
-            floor at odd zoom/font-scale settings.
-            Enter still submits (matching the old single-line input's native
-            no-newline behavior); Shift+Enter now inserts a newline, which a
-            plain <input> could never do — the one behavior extension this
-            task makes, requiring `e.preventDefault()` so the submitting
-            Enter doesn't also insert a newline before `go()` clears the
-            field. */}
+        {/* Enter submits; Shift+Enter inserts a newline (kept from Task 20). */}
         <textarea
           className="gm-input"
           value={genPrompt}
@@ -568,30 +604,52 @@ export function CommandBar() {
               go()
             }
           }}
-          placeholder="Describe a new image…"
+          placeholder="Describe an image to create…  (Enter to run, Shift+Enter for a new line)"
           rows={2}
-          style={{ ...textareaField({ large: true }), flex: 1, minHeight: 64, resize: 'none' }}
+          autoFocus
+          style={{ ...textareaField({ large: true }), width: '100%', minHeight: 64, resize: 'none' }}
         />
-        {/* Task 16b: idle-mood generate model picker — same styling (gm-input
-            class + inputField() token, no appearance-none/chevron override)
-            as the Edit tray's picker below, since that's the tray's actual
-            current pattern, a bare <select className="gm-input">. */}
-        <select
-          className="gm-input"
-          value={genModel}
-          onChange={(e) => setGenModel(e.target.value)}
-          style={field}
-          aria-label="generate model"
-        >
-          {GENERATE_MODELS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-        <button className="gm-btn" onClick={go} style={primaryBtn}>
-          Generate
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* User 2026-07-21: this Upload is the DIRECT path — file picker
+              straight to a canvas root node (onUploadChange ends in
+              createUploadedRoot), distinct from the assets drawer (which
+              keeps its own handle for browsing assets/presets). Accessible
+              name stays "Upload" for the E2E selector. */}
+          <button
+            className="gm-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={buttonSecondary({ disabled: uploading, active: false })}
+            title="upload an image straight onto the canvas"
+          >
+            <IconUpload size={14} />
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+          <span style={{ flex: 1 }} />
+          <select
+            className="gm-input"
+            value={genModel}
+            onChange={(e) => setGenModel(e.target.value)}
+            style={field}
+            aria-label="generate model"
+          >
+            {GENERATE_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          {/* "Run", not "Generate" (user 2026-07-21) — also matches the
+              armed Edit tray's primary button, so both moods share one verb. */}
+          <button
+            className="gm-btn"
+            onClick={go}
+            disabled={!genPrompt.trim()}
+            style={buttonPrimary({ disabled: !genPrompt.trim() })}
+          >
+            Run
+          </button>
+        </div>
         {uploadError && (
           <div
             style={{
@@ -618,7 +676,12 @@ export function CommandBar() {
   const op = p.op
   const opModel = 'model' in op ? op.model : undefined
   const opPrompt = 'prompt' in op ? op.prompt : undefined
-  const gatedTools = new Set(['crop', 'resize']) // ActionMenu.tsx's gating, unchanged (Task 18: 'inpaint' dropped — no longer its own verb)
+  // User-reported 2026-07-21: a still-generating node offered the full Edit
+  // tray (armedTool survives selection change, and only crop/resize were
+  // gated). EVERY tool now waits for a done node; `toolReady` below also
+  // suppresses the armed-tray render for pending/error nodes.
+  const gatedTools = new Set(['edit', 'crop', 'resize', 'transform', 'adjust', 'redact'])
+  const toolReady = p.status === 'done'
 
   // Task 18: "region active" — the Edit tray's "Select region" toggle is on
   // AND a real (non-trivial) rect has actually been drawn. Drives the run
@@ -685,10 +748,14 @@ export function CommandBar() {
     if (!prompt.trim()) return
     if (regionActive) {
       const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
+      // Soft-region support (user 2026-07-21): the SELECTED model rides
+      // along, no longer hardcoded to gpt-image-2 — run-op's inpaint
+      // dispatch picks the strategy per model (gpt-image-2 → pixel mask;
+      // others → red-box annotated image + instruction prompt).
       runOp(
         editor,
         sel.id,
-        { type: 'inpaint', prompt, model: 'gpt-image-2', rect, referenceNodeIds: refIds.length ? [...refIds] : undefined },
+        { type: 'inpaint', prompt, model, rect, referenceNodeIds: refIds.length ? [...refIds] : undefined },
         variants,
         resolveRef,
         undefined,
@@ -720,12 +787,49 @@ export function CommandBar() {
   // also clears any drawn rect, matching "clearing region restores both"
   // (model picker + reference button re-enable once regionActive goes
   // false).
+  // Region-drawing tools zoom the target node to center-stage first (user
+  // 2026-07-21: "make the targeted node center and big so the user knows
+  // where to select"). Round 2 fixes (user: "zoom too much? the box cover
+  // some of node" / "after I press esc, should we return back"):
+  //   - zoom is CAPPED at 1.5x — plain zoomToBounds fit a small node to the
+  //     whole viewport (observed 615%);
+  //   - the node centers in the VISIBLE area (bar ~330px + nav ~60px
+  //     reserved), not the raw viewport, so the armed tray doesn't sit on
+  //     top of it;
+  //   - the pre-zoom camera is remembered (prevCameraRef, declared with the
+  //     unconditional hooks above the !sel early-return) and restored by the
+  //     effect up there when the region tool is dismissed however that
+  //     happens (Esc, toggle off, Apply/Run, switching verbs).
+  const zoomToNode = () => {
+    const b = editor.getShapePageBounds(sel.id)
+    if (!b) return
+    if (!prevCameraRef.current) prevCameraRef.current = { ...editor.getCamera() }
+    const vs = editor.getViewportScreenBounds()
+    const SIDE = 120
+    const TOP = 60
+    const BOTTOM = 330
+    const fit = Math.min((vs.w - SIDE * 2) / b.w, (vs.h - TOP - BOTTOM) / b.h)
+    const z = Math.max(0.05, Math.min(fit, 2)) // cap 2x (user 2026-07-22, was 1.5)
+    // Center the node at the middle of the usable band above the bar:
+    // screen = (page + camera) * zoom  ⇒  camera = screen/zoom − page.
+    const sx = vs.w / 2
+    const sy = TOP + (vs.h - TOP - BOTTOM) / 2
+    editor.setCamera(
+      { x: sx / z - (b.x + b.w / 2), y: sy / z - (b.y + b.h / 2), z },
+      { animation: { duration: 220 } }
+    )
+  }
+
   const toggleRegion = () => {
     const next = !regionMode
     setRegionMode(next)
     setCropFrac(null)
-    if (next) setRefIds([])
+    if (next) {
+      setRefIds([])
+      zoomToNode()
+    }
   }
+
 
   const pickPreset = (name: string, ratio: number | null) => {
     setPreset(name)
@@ -753,6 +857,30 @@ export function CommandBar() {
     if (p.naturalW > 0) setHeight(Math.round(v * (p.naturalH / p.naturalW)))
   }
 
+  const applyTransform = () => {
+    if (xfDeg === 0 && !xfFlipH && !xfFlipV) return
+    void runInstantOp(editor, sel.id, { type: 'transform', deg: xfDeg, flipH: xfFlipH, flipV: xfFlipV })
+    setArmedTool(null)
+  }
+
+  const applyAdjust = () => {
+    void runInstantOp(editor, sel.id, {
+      type: 'adjust',
+      brightness: adjBrightness,
+      contrast: adjContrast,
+      saturation: adjSaturation,
+    })
+    setArmedTool(null)
+  }
+
+  const applyRedact = () => {
+    if (cropTooSmall(cropFrac, p.naturalW, p.naturalH)) return
+    const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
+    void runInstantOp(editor, sel.id, { type: 'redact', rect, mode: redactMode, amount: redactAmount })
+    setArmedTool(null)
+    setCropFrac(null)
+  }
+
   const trayHeader =
     armedTool === 'edit'
       ? `✦ Edit v${p.seq} — creates children of v${p.seq}`
@@ -760,7 +888,13 @@ export function CommandBar() {
         ? `Crop v${p.seq} — instant`
         : armedTool === 'resize'
           ? `Resize v${p.seq} — instant`
-          : null
+          : armedTool === 'transform'
+            ? `Rotate/Flip v${p.seq} — instant`
+            : armedTool === 'adjust'
+              ? `Adjust v${p.seq} — instant`
+              : armedTool === 'redact'
+                ? `Redact v${p.seq} — instant`
+                : null
 
   const verbRow = (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -772,7 +906,15 @@ export function CommandBar() {
             className="gm-btn"
             disabled={disabled}
             title={disabled ? 'waiting for image' : undefined}
-            onClick={() => !disabled && setArmedTool(armedTool === tool ? null : tool)}
+            onClick={() => {
+              if (disabled) return
+              const next = armedTool === tool ? null : tool
+              setArmedTool(next)
+              // Every tool frames the node center-stage (user 2026-07-22)
+              // EXCEPT plain Edit, which keeps the current view — its
+              // "Select region" toggle zooms separately when switched on.
+              if (next && next !== 'edit') zoomToNode()
+            }}
             style={verbBtnStyle(armedTool === tool, disabled)}
           >
             {label}
@@ -803,7 +945,7 @@ export function CommandBar() {
       }}
       className="gm-bar"
     >
-      {!armedTool && (
+      {(!armedTool || !toolReady) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
             {editingName ? (
@@ -838,7 +980,7 @@ export function CommandBar() {
         </div>
       )}
 
-      {armedTool && (
+      {armedTool && toolReady && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           <div
             style={{
@@ -887,16 +1029,21 @@ export function CommandBar() {
                   softer "focuses the edit here" guarantee, not a
                   pixel-level compositing one — this wording no longer
                   overclaims what the model actually does. */}
-              {regionActive && <div className="gm-region-badge">editing this region</div>}
-              {/* Task 21: one-line note (brief: "if the user had
-                  nano-banana/seedream selected and draws a region, show
-                  gpt-image-2 as the region model with a one-line note") —
-                  only shown when it's actually informative, i.e. the model
-                  the user had picked before drawing a region differs from
-                  the one Run will actually use. */}
+              {regionActive && (
+                <div className="gm-region-badge">
+                  {model === 'gpt-image-2' ? 'editing this region (exact mask)' : 'editing this region (guided)'}
+                </div>
+              )}
+              {/* Soft-region support (user 2026-07-21, supersedes Task 21's
+                  gpt-image-2 lock): every edit model can take a region now —
+                  gpt-image-2 via its real pixel mask, the rest via a
+                  red-box-annotated source image + instruction prompt
+                  (run-op.ts's inpaint dispatch; verified live against
+                  nano-banana-pro before wiring). This one-liner tells the
+                  user which guarantee they're getting. */}
               {regionActive && model !== 'gpt-image-2' && (
                 <div style={{ color: color.textSecondary, fontSize: typeTok.micro }}>
-                  region editing uses GPT Image 2
+                  guided: the result is composited back — pixels outside the box stay untouched
                 </div>
               )}
               <textarea
@@ -908,31 +1055,18 @@ export function CommandBar() {
                 style={{ ...textareaField({ large: true }), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {/* Task 21 (was Task 18's region-active lock): gpt-image-2 is
-                    now the ONLY regionCapable model (lib/fal-registry.ts),
-                    so this is no longer "locked to the default while a
-                    region is set" among several choices — it's the sole
-                    model the 'inpaint' capability has. Still shown as a
-                    disabled, non-selectable field rather than the live
-                    picker so it can't be typo'd into disagreeing with what
-                    Run actually sends (same rationale as the Task 18
-                    version, updated model). */}
-                {regionActive ? (
-                  <span
-                    title="region editing routes through GPT Image 2 — the only model that supports a mask + reference in one call"
-                    style={{ ...field, display: 'inline-flex', alignItems: 'center', color: color.textDisabled, cursor: 'not-allowed' }}
-                  >
-                    GPT Image 2 (region)
-                  </span>
-                ) : (
-                  <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
-                    {EDIT_MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                {/* Soft-region support (user 2026-07-21): the picker stays
+                    LIVE while a region is drawn — the Task 21 gpt-image-2
+                    lock chip is gone since every model can serve a region
+                    now (exact mask vs guided annotation, chosen in
+                    run-op.ts's inpaint dispatch by model id). */}
+                <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
+                  {EDIT_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
                 <span style={{ color: color.textSecondary }}>variants:</span>
                 <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
                   −
@@ -947,7 +1081,7 @@ export function CommandBar() {
                   title={
                     regionMode
                       ? 'back to whole-image edit'
-                      : 'draw a rect region — GPT Image 2 focuses the edit there'
+                      : 'draw a rect region to focus the edit there'
                   }
                   style={buttonSecondary({ active: regionMode, quiet: true })}
                 >
@@ -1065,6 +1199,125 @@ export function CommandBar() {
                   style={{ ...field, flex: 1 }}
                 />
                 <button className="gm-btn" onClick={applyResize} disabled={width < 1 || height < 1} style={buttonPrimary({ disabled: width < 1 || height < 1 })}>
+                  Apply — instant
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* UX round 2 (user 2026-07-21: 180° took two clicks/two nodes,
+              and flip doesn't deserve two verb-row buttons): rotation and
+              flips are ONE control — pick presets/toggles freely, Apply
+              composes them into a single 'transform' op → one child node. */}
+          {armedTool === 'transform' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ color: color.textSecondary }}>rotate</span>
+              {([0, 90, 180, 270] as const).map((d) => (
+                <button
+                  key={d}
+                  className="gm-btn"
+                  onClick={() => setXfDeg(d)}
+                  style={buttonSecondary({ active: xfDeg === d })}
+                >
+                  {d}°
+                </button>
+              ))}
+              <span style={{ color: color.textSecondary, marginLeft: 8 }}>flip</span>
+              <button
+                className="gm-btn"
+                onClick={() => setXfFlipH((v) => !v)}
+                title="mirror left↔right"
+                style={buttonSecondary({ active: xfFlipH })}
+              >
+                H
+              </button>
+              <button
+                className="gm-btn"
+                onClick={() => setXfFlipV((v) => !v)}
+                title="mirror top↕bottom"
+                style={buttonSecondary({ active: xfFlipV })}
+              >
+                V
+              </button>
+              <button
+                className="gm-btn"
+                onClick={applyTransform}
+                disabled={xfDeg === 0 && !xfFlipH && !xfFlipV}
+                style={{
+                  ...buttonPrimary({ disabled: xfDeg === 0 && !xfFlipH && !xfFlipV }),
+                  marginLeft: 'auto',
+                }}
+              >
+                Apply — instant
+              </button>
+            </div>
+          )}
+
+          {armedTool === 'adjust' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {(
+                [
+                  ['brightness', adjBrightness, setAdjBrightness],
+                  ['contrast', adjContrast, setAdjContrast],
+                  ['saturation', adjSaturation, setAdjSaturation],
+                ] as const
+              ).map(([label, value, setValue]) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: color.textSecondary, width: 72 }}>{label}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    value={value}
+                    onChange={(e) => setValue(Number(e.target.value))}
+                    style={{ flex: 1 }}
+                    aria-label={label}
+                  />
+                  <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{value}%</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex' }}>
+                <button className="gm-btn" onClick={applyAdjust} style={{ ...buttonPrimary({}), marginLeft: 'auto' }}>
+                  Apply — instant
+                </button>
+              </div>
+            </div>
+          )}
+
+          {armedTool === 'redact' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ color: color.textSecondary }}>drag on the image to mark the region to redact</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  className="gm-btn"
+                  onClick={() => setRedactMode('blur')}
+                  style={buttonSecondary({ active: redactMode === 'blur' })}
+                >
+                  Blur
+                </button>
+                <button
+                  className="gm-btn"
+                  onClick={() => setRedactMode('pixelate')}
+                  style={buttonSecondary({ active: redactMode === 'pixelate' })}
+                >
+                  Pixelate
+                </button>
+                <span style={{ color: color.textSecondary }}>strength</span>
+                <input
+                  type="range"
+                  min={4}
+                  max={48}
+                  value={redactAmount}
+                  onChange={(e) => setRedactAmount(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                  aria-label="redact strength"
+                />
+                <button
+                  className="gm-btn"
+                  onClick={applyRedact}
+                  disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH)}
+                  style={{ ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) }), marginLeft: 'auto' }}
+                >
                   Apply — instant
                 </button>
               </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type PointerEvent, type RefObject } from 'react'
+import { useEffect, useRef, type PointerEvent, type RefObject } from 'react'
 import type { RectFrac } from '@/lib/types'
 
 // Shared by CropOverlay and RegionOverlay (Task 11 extraction — the two
@@ -26,13 +26,23 @@ export interface DragRectHandlers {
 // `onEscape` is called (in addition to clearing the rect) when the user hits
 // Escape — both overlays use it to disarm the tool, so it lives here instead
 // of being copy-pasted into each overlay's own keydown effect.
+//
+// Two drag modes (user-reported: "the crop box can't be moved"): pointerdown
+// INSIDE the existing rect grabs and translates it (size preserved, clamped
+// to the 0..1 box); pointerdown anywhere else draws a fresh rect, as before.
+// `rectFrac` is passed in for the hit-test — both overlays already subscribe
+// to it for rendering, so this adds no new store coupling.
+type DragState =
+  | { mode: 'draw'; start: { x: number; y: number } }
+  | { mode: 'move'; grab: { dx: number; dy: number }; size: { w: number; h: number } }
+
 export function useDragRect(
+  rectFrac: RectFrac | null,
   setRectFrac: (r: RectFrac | null) => void,
   onEscape?: () => void
 ): DragRectHandlers {
   const containerRef = useRef<HTMLDivElement>(null)
-  const dragStart = useRef<{ x: number; y: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const drag = useRef<DragState | null>(null)
 
   const toFrac = (e: PointerEvent<HTMLDivElement>): { x: number; y: number } => {
     const r = containerRef.current!.getBoundingClientRect()
@@ -45,21 +55,35 @@ export function useDragRect(
     e.stopPropagation()
     ;(e.target as Element).setPointerCapture(e.pointerId)
     const p = toFrac(e)
-    dragStart.current = p
-    setDragging(true)
-    setRectFrac({ x: p.x, y: p.y, w: 0, h: 0 })
+    const r = rectFrac
+    const insideRect = r && r.w > 0 && r.h > 0 && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
+    if (insideRect) {
+      drag.current = { mode: 'move', grab: { dx: p.x - r.x, dy: p.y - r.y }, size: { w: r.w, h: r.h } }
+    } else {
+      drag.current = { mode: 'draw', start: p }
+      setRectFrac({ x: p.x, y: p.y, w: 0, h: 0 })
+    }
   }
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     e.stopPropagation()
-    if (!dragging || !dragStart.current) return
-    setRectFrac(rectFrom(dragStart.current, toFrac(e)))
+    const d = drag.current
+    if (!d) return
+    const p = toFrac(e)
+    if (d.mode === 'draw') {
+      setRectFrac(rectFrom(d.start, p))
+    } else {
+      // Clamp so the whole rect stays inside the image; toFrac already
+      // clamps the pointer itself, this clamps the far edge too.
+      const x = Math.min(Math.max(0, p.x - d.grab.dx), 1 - d.size.w)
+      const y = Math.min(Math.max(0, p.y - d.grab.dy), 1 - d.size.h)
+      setRectFrac({ x, y, w: d.size.w, h: d.size.h })
+    }
   }
 
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     e.stopPropagation()
-    setDragging(false)
-    dragStart.current = null
+    drag.current = null
   }
 
   useEffect(() => {

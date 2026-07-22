@@ -17,7 +17,14 @@ import type { RectFrac } from '@/lib/types'
 // `{ type: 'inpaint', ... }` op (run-op.ts's dispatch/schema are UNCHANGED
 // by this task — only the CommandBar UI that arms the region-fill path
 // moved), so no persisted data references this union member either.
-type Tool = null | 'edit' | 'crop' | 'resize'
+// 2026-07-21 deterministic-tools batch: 'adjust' (brightness/contrast/
+// saturation sliders) and 'redact' (blur/pixelate a drawn region) join as
+// armed tools with trays; rotate/flip are one-click instant ops with no
+// armed state, so they don't appear here.
+// UX round 2: 'transform' = the combined Rotate/Flip tray (rotation presets
+// + flip toggles, one Apply → one child node), replacing the one-click
+// rotate/flip verb-row buttons.
+type Tool = null | 'edit' | 'crop' | 'resize' | 'transform' | 'adjust' | 'redact'
 
 // v2 chrome (Task 14): mirrors save-sync.ts's title-bar dirty/error signal
 // as ui-store state so TopNav's save dot can render it reactively instead of
@@ -61,6 +68,14 @@ interface UiState {
   // store (not CommandBar-local state) because ImageNodeShape.tsx's render
   // gate for RegionOverlay needs it too.
   regionMode: boolean
+  // Connect flow (2026-07-21, replaces the short-lived "⤳ Connect" verb
+  // button): set by the port dot on a selected node; while non-null,
+  // ConnectOverlay tracks the cursor and the next click on another
+  // image-node creates a bound arrow from this node to it. String (not
+  // TLShapeId) to keep the store free of tldraw type imports, same as
+  // pendingRefAttach above.
+  connectFrom: string | null
+  setConnectFrom: (id: string | null) => void
   setArmedTool: (t: Tool) => void
   setPickingRef: (v: boolean) => void
   setCropFrac: (r: RectFrac | null) => void
@@ -79,6 +94,8 @@ export const useUiStore = create<UiState>((set) => ({
   pendingRefAttach: null,
   cropFrac: null,
   regionMode: false,
+  connectFrom: null,
+  setConnectFrom: (connectFrom) => set({ connectFrom }),
   setArmedTool: (armedTool) => set({ armedTool }),
   setPickingRef: (pickingRef) => set({ pickingRef }),
   setSaveState: (saveState) => set({ saveState }),

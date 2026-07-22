@@ -34,6 +34,7 @@ export function RegionOverlay() {
   const setCropFrac = useUiStore((s) => s.setCropFrac)
   const setRegionMode = useUiStore((s) => s.setRegionMode)
   const { containerRef, onPointerDown, onPointerMove, onPointerUp } = useDragRect(
+    cropFrac,
     setCropFrac,
     () => setRegionMode(false)
   )
@@ -72,6 +73,7 @@ export function RegionOverlay() {
             boxShadow: '0 0 0 9999px rgba(0,0,0,.55)',
             border: '1px dashed #2dd4bf',
             boxSizing: 'border-box',
+            cursor: 'move',
           }}
         />
       )}

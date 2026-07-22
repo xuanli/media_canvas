@@ -13,8 +13,9 @@ import {
   type TLBaseShape,
   type TLIndicatorPath,
   type TLResizeInfo,
+  type TLShapeId,
 } from 'tldraw'
-import type { VersionNodeProps } from '@/lib/types'
+import { opLabel, type VersionNodeProps } from '@/lib/types'
 import { useUiStore } from '@/lib/ui-store'
 import { CropOverlay } from '@/components/overlays/CropOverlay'
 import { RegionOverlay } from '@/components/overlays/RegionOverlay'
@@ -59,7 +60,7 @@ export const IMAGE_NODE_W = 240
 // id lib/run-op.ts's runEdit always dispatches for a region-fill op. Keep
 // in sync with the registry the same way those two lists already are.
 const MODEL_LABELS: Record<string, string> = {
-  'nano-banana': 'Nano Banana 2',
+  'nano-banana': 'Nano Banana Pro',
   'gpt-image-2': 'GPT Image 2',
   'seedream-5-lite': 'Seedream 5 Lite',
   'flux-1.1-pro': 'FLUX 1.1',
@@ -223,11 +224,16 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
     [editor, shape.id]
   )
   const regionMode = useUiStore((s) => s.regionMode)
+  const connectFrom = useUiStore((s) => s.connectFrom)
+  const setConnectFrom = useUiStore((s) => s.setConnectFrom)
   const showCropOverlay = isSelected && armedTool === 'crop' && p.status === 'done'
   // Task 18: was `armedTool === 'inpaint'` (the old standalone verb) — now
   // Edit's own "Select region" toggle (ui-store's `regionMode`) gates it,
   // since Inpaint no longer exists as a separate armed tool.
-  const showRegionOverlay = isSelected && armedTool === 'edit' && regionMode && p.status === 'done'
+  // 2026-07-21: the Redact tool reuses the exact same overlay + cropFrac
+  // field (one region tool armed at a time — see RegionOverlay's comment).
+  const showRegionOverlay =
+    isSelected && ((armedTool === 'edit' && regionMode) || armedTool === 'redact') && p.status === 'done'
   const pickingRef = useUiStore((s) => s.pickingRef)
   const pendingElapsed = usePendingElapsedSeconds(p.status === 'pending')
   // Reference pick mode (Task 12): a node is a valid pick target while
@@ -236,6 +242,22 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
   // Inspector.tsx's selId-reset/pick-detection effect for why only one
   // shape is ever selected during a pick).
   const pickable = pickingRef && p.status === 'done' && !isSelected
+  // Pending progress texture (user 2026-07-21): a child-in-flight shows its
+  // SOURCE node's image blurred behind the spinner — "making progress from
+  // this" — reactively, so a parent whose asset URL upgrades (dataURL → CDN)
+  // or finishes mid-wait updates the backdrop too. Parentless generates get
+  // the shimmer div below instead.
+  const pendingParentUrl = useValue(
+    'pending-parent-url',
+    () => {
+      if (p.status !== 'pending' || !p.sourceId) return null
+      const parent = editor.getShape(p.sourceId as TLShapeId)
+      if (!parent || parent.type !== 'image-node') return null
+      const pp = (parent as ImageNodeShape).props
+      return pp.status === 'done' && pp.assetUrl ? pp.assetUrl : null
+    },
+    [editor, p.sourceId, p.status]
+  )
   return (
     <HTMLContainer
       className="gm-node-card"
@@ -251,7 +273,10 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         cursor: pickable ? 'crosshair' : undefined,
       }}
     >
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      {/* gm-alpha-check: subtle checker shows through transparent image
+          regions (e.g. logo PNGs) so light ink stays visible on light cards
+          and dark ink on dark cards — invisible behind opaque photos. */}
+      <div className={p.status === 'done' ? 'gm-alpha-check' : undefined} style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
         {p.status === 'done' && <AssetView props={p} />}
         {p.status === 'done' && p.errorCode === 'unsynced' && (
           // Minor (spec-promised, YAGNI-scoped): badge only, no retry
@@ -279,24 +304,63 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
           </div>
         )}
         {p.status === 'pending' && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: color.accent,
-              gap: 6,
-            }}
-          >
-            <IconSpinner size={18} />
-            {/* Task 18 patience UX: model + live "M:SS" ticker so a
-                slow model (gpt-image-2, up to ~4min) doesn't read as a
-                hung/broken spinner. */}
-            <span style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
-              {('model' in p.op && MODEL_LABELS[p.op.model]) || 'model'} · {formatElapsed(pendingElapsed)}
-            </span>
+          <div style={{ position: 'relative', height: '100%' }}>
+            {pendingParentUrl ? (
+              // Blurred source image, slowly pulsing — scale(1.08) hides the
+              // blur's soft transparent edges inside the overflow-hidden box.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={pendingParentUrl}
+                alt=""
+                draggable={false}
+                className="gm-pending-pulse"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'fill',
+                  borderRadius: 4,
+                  filter: 'blur(12px) brightness(0.55) saturate(0.8)',
+                  transform: 'scale(1.08)',
+                  pointerEvents: 'none',
+                }}
+              />
+            ) : (
+              <div className="gm-pending-shimmer" style={{ position: 'absolute', inset: 0, borderRadius: 4 }} />
+            )}
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: color.accent,
+                gap: 6,
+              }}
+            >
+              <IconSpinner size={18} />
+              {/* Task 18 patience UX: model + live "M:SS" ticker so a
+                  slow model (gpt-image-2, up to ~4min) doesn't read as a
+                  hung/broken spinner. Chip background keeps the label
+                  legible over the blurred backdrop. */}
+              <span
+                style={{
+                  fontFamily: typeTok.fontMono,
+                  fontSize: typeTok.micro,
+                  color: color.textSecondary,
+                  background: 'rgba(10, 12, 15, 0.55)',
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                }}
+              >
+                {p.op.type === 'upload'
+                  ? 'loading image…'
+                  : `${('model' in p.op && MODEL_LABELS[p.op.model]) || 'model'} · ${formatElapsed(pendingElapsed)}`}
+              </span>
+            </div>
           </div>
         )}
         {p.status === 'error' && (
@@ -340,6 +404,34 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         {showCropOverlay && <CropOverlay />}
         {showRegionOverlay && <RegionOverlay />}
       </div>
+      {/* Connect port (2026-07-21, replaces the "⤳ Connect" verb button):
+          dot on the right edge of a selected, done node — click it, then
+          click another node; ConnectOverlay (CanvasApp) draws the tracking
+          line and creates the bound arrow. Hidden while a connect is
+          already in flight so the flow reads modal. */}
+      {isSelected && p.status === 'done' && !connectFrom && (
+        <div
+          title="connect to another node"
+          onPointerDown={(e) => {
+            e.stopPropagation()
+            setConnectFrom(shape.id)
+          }}
+          style={{
+            position: 'absolute',
+            right: -7,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 14,
+            height: 14,
+            borderRadius: '50%',
+            background: color.accent,
+            border: `2px solid ${color.cardBg}`,
+            cursor: 'crosshair',
+            pointerEvents: 'all',
+            zIndex: 20,
+          }}
+        />
+      )}
       <div style={{ padding: '4px 3px 1px' }}>
         {/* Task 15A: primary line is the user-facing name; secondary is the
             provenance recipe (was the whole label pre-15A). Falls back to
@@ -361,7 +453,7 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         >
           {p.name && p.name.trim()
             ? p.name
-            : `v${p.seq} · ${p.op.type}${'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}`}
+            : `v${p.seq} · ${opLabel(p.op.type)}${'prompt' in p.op && p.op.prompt ? ` "${p.op.prompt.slice(0, 28)}"` : ''}`}
         </div>
         <div
           // Design-critique item 11: 9px mono at textMuted (#666f7a on
@@ -370,14 +462,19 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
           // textMuted stays reserved for hover-revealed/tertiary chrome only.
           style={{
             fontFamily: typeTok.fontMono,
-            fontSize: 10,
+            fontSize: 11, // +1 with the 2026-07-21 global type bump
             color: color.textSecondary,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}
         >
-          v{p.seq} · {p.op.type}
+          v{p.seq} · {opLabel(p.op.type)}
+          {/* Resolution (user 2026-07-21): natural px, not on-canvas size —
+              makes "the asset itself is small" vs "the node is displayed
+              small" distinguishable at a glance. 0×0 (dims not known yet,
+              e.g. mid-generation) renders nothing. */}
+          {p.naturalW > 0 && ` · ${p.naturalW}×${p.naturalH}`}
         </div>
       </div>
     </HTMLContainer>

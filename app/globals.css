@@ -1,5 +1,70 @@
-:root { color-scheme: dark; }
-html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
+/* Theme palettes (user 2026-07-21: light/dark support). Dark is the default
+   (also what pre-theme snapshots/screenshots assume); light activates via
+   data-gm-theme="light" on <html>, set pre-hydration by the inline script in
+   app/layout.tsx and toggled by components/ThemeToggle.tsx. lib/design.ts's
+   `color` tokens are var() references into this block — palette edits happen
+   HERE, not there. The accent family is intentionally darker in light mode
+   (teal-600) so accent-as-text stays legible on white. */
+:root {
+  color-scheme: dark;
+  --gm-nav-bg: #0f1012;
+  --gm-bar-bg: #17181b;
+  --gm-overlay-bg: #1c1d22;
+  --gm-field-bg: #0b0c0e;
+  --gm-card-bg: #1a1d22;
+  --gm-body-bg: #14171c;
+  --gm-border: rgba(255, 255, 255, 0.08);
+  --gm-border-strong: rgba(255, 255, 255, 0.16);
+  --gm-text: #e6e9ee;
+  --gm-text-secondary: #9aa3ad;
+  --gm-text-muted: #666f7a;
+  --gm-text-disabled: #5b6472;
+  --gm-accent: #2dd4bf;
+  --gm-accent-text: #0b2622;
+  --gm-accent-dim: rgba(45, 212, 191, 0.14);
+  --gm-success: #7ec9a2;
+  --gm-warning: #e0c05c;
+  --gm-danger: #d98d80;
+  --gm-hover: rgba(255, 255, 255, 0.06);
+  --gm-alpha-check: rgba(255, 255, 255, 0.06);
+  --gm-shadow-bar: 0 18px 44px rgba(0, 0, 0, 0.48), 0 4px 14px rgba(0, 0, 0, 0.32);
+  --gm-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.24);
+  --gm-shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+/* Light palette contrast pass (user 2026-07-21: first cut was washed out —
+   white cards on a near-white canvas with dark-theme shadows). Principles:
+   the canvas/body sits a real step DARKER than the white surfaces so cards
+   and bars pop; borders are stronger (hairlines vanish on white); shadows
+   are much softer (dark rgba blacks read harsh on light). The tldraw canvas
+   background itself is themed from CanvasApp (updateTheme background) to
+   match --gm-body-bg. */
+:root[data-gm-theme='light'] {
+  color-scheme: light;
+  --gm-nav-bg: #ffffff;
+  --gm-bar-bg: #ffffff;
+  --gm-overlay-bg: #f4f5f8;
+  --gm-field-bg: #eef0f4;
+  --gm-card-bg: #ffffff;
+  --gm-body-bg: #e7eaef;
+  --gm-border: rgba(16, 24, 32, 0.16);
+  --gm-border-strong: rgba(16, 24, 32, 0.3);
+  --gm-text: #1c2127;
+  --gm-text-secondary: #525c67;
+  --gm-text-muted: #7d8590;
+  --gm-text-disabled: #a5adb6;
+  --gm-accent: #0d9488;
+  --gm-accent-text: #ffffff;
+  --gm-accent-dim: rgba(13, 148, 136, 0.12);
+  --gm-success: #2e7d5b;
+  --gm-warning: #8f6f14;
+  --gm-danger: #b0483c;
+  --gm-hover: rgba(16, 24, 32, 0.06);
+  --gm-alpha-check: rgba(16, 24, 32, 0.07);
+  --gm-shadow-bar: 0 12px 32px rgba(16, 24, 32, 0.14), 0 2px 8px rgba(16, 24, 32, 0.08);
+  --gm-shadow-card: 0 1px 2px rgba(16, 24, 32, 0.1), 0 3px 10px rgba(16, 24, 32, 0.08);
+  --gm-shadow-menu: 0 8px 24px rgba(16, 24, 32, 0.16);
+}
+html, body { margin: 0; height: 100%; background: var(--gm-body-bg); color: var(--gm-text);
   font-family: system-ui, -apple-system, sans-serif; }
 * { box-sizing: border-box; }
 
@@ -32,24 +97,39 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 /* Tertiary/icon (borderless) controls: hover-surface instead of brightness,
    since there's no fill to lighten. */
 .gm-btn-ghost:hover:not(:disabled), .gm-icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--gm-hover);
 }
 
-.gm-dropdown-row:hover { background: rgba(255, 255, 255, 0.06); }
+.gm-dropdown-row:hover { background: var(--gm-hover); }
 
-.gm-input:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.16); }
-.gm-input:focus { border-color: #2dd4bf; outline: none; }
+.gm-input:hover:not(:disabled) { border-color: var(--gm-border-strong); }
+.gm-input:focus { border-color: var(--gm-accent); outline: none; }
 
 /* Visible focus rings — accent, 2px, on every interactive control (keyboard
    nav, not just mouse hover). */
 .gm-btn:focus-visible, .gm-btn-ghost:focus-visible, .gm-icon-btn:focus-visible,
 .gm-input:focus-visible, .gm-dropdown-row:focus-visible {
-  outline: 2px solid #2dd4bf;
+  outline: 2px solid var(--gm-accent);
   outline-offset: 1px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .gm-btn, .gm-btn-ghost, .gm-input, .gm-dropdown-row, .gm-icon-btn { transition: none; }
+}
+
+/* Alpha checkerboard backing (user 2026-07-21: "preset looks bad" — a
+   transparent-background logo is invisible when its ink matches the surface
+   behind it: black logo on dark tile, white logo on light card). The classic
+   editor answer: a subtle theme-aware checker behind image content. Opaque
+   images fully cover it; it only ever shows through real transparency.
+   Used by AssetsDrawer tiles and ImageNodeShape's image container. */
+.gm-alpha-check {
+  background-color: var(--gm-overlay-bg);
+  background-image:
+    linear-gradient(45deg, var(--gm-alpha-check) 25%, transparent 25%, transparent 75%, var(--gm-alpha-check) 75%),
+    linear-gradient(45deg, var(--gm-alpha-check) 25%, transparent 25%, transparent 75%, var(--gm-alpha-check) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
 }
 
 /* Pending-status spinner (ImageNodeShape) — 900ms linear spin, disabled
@@ -61,6 +141,35 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 @keyframes gm-spin-rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Pending-node progress texture (user 2026-07-21: flat dark box didn't feel
+   like progress). Children show the SOURCE node's image blurred + slowly
+   pulsing (gm-pending-pulse, applied to the <img> in ImageNodeShape's
+   pending branch); parentless generate nodes get a drifting accent shimmer
+   instead. Both freeze under reduced motion (static blur/tint still shows). */
+.gm-pending-pulse { animation: gm-pending-pulse 2.4s ease-in-out infinite; }
+@keyframes gm-pending-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.8; }
+}
+.gm-pending-shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(45, 212, 191, 0.05) 20%,
+    rgba(45, 212, 191, 0.16) 50%,
+    rgba(45, 212, 191, 0.05) 80%
+  );
+  background-size: 200% 100%;
+  animation: gm-pending-shimmer 2.2s linear infinite;
+}
+@keyframes gm-pending-shimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -80% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gm-pending-pulse { animation: none; opacity: 0.6; }
+  .gm-pending-shimmer { animation: none; }
 }
 
 /* Node-card elevation + selection ring (Task 15B, design-critique item 2
@@ -94,7 +203,7 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 
 .gm-node-card {
   transition: box-shadow 150ms ease-out, border-color 150ms ease-out;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--gm-shadow-card);
 }
 @media (prefers-reduced-motion: reduce) {
   .gm-node-card { transition: none; }
@@ -161,7 +270,7 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   .gm-zoom-percent { display: none !important; }
   /* Restore the divider the (now-hidden) percent segment used to provide
      between [-] and [+]. */
-  .gm-zoom-plus { border-left: 1px solid rgba(255, 255, 255, 0.08) !important; }
+  .gm-zoom-plus { border-left: 1px solid var(--gm-border) !important; }
 }
 @media (max-width: 1020px) {
   /* Task 18 re-derivation (was 360px, Task 15D's armed-'inpaint' value —
@@ -230,8 +339,8 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   width: fit-content;
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(45, 212, 191, 0.12);
-  border: 1px solid rgba(45, 212, 191, 0.35);
-  color: #2dd4bf;
+  background: var(--gm-accent-dim);
+  border: 1px solid var(--gm-accent);
+  color: var(--gm-accent);
   font-size: 11px;
 }

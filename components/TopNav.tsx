@@ -38,6 +38,7 @@ import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
 import { color, metric, type as typeTok } from '@/lib/design'
 import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconUpload, IconX } from '@/components/icons'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 const RECENT_KEY = 'gm-recent'
 const RECENT_CAP = 10
@@ -89,12 +90,17 @@ const navBar: CSSProperties = {
   left: 0,
   right: 0,
   height: 44,
-  zIndex: 400,
+  // 500 (was 400): must sit ABOVE the assets drawer (450/451) — the nav's
+  // z-index creates the stacking context its dropdowns live in, so the
+  // switcher/File menus (zIndex 401, child-scoped) were painting under the
+  // drawer (user-reported 2026-07-21). Modal overlays (ConfirmDialog,
+  // PasscodeGate) stay on top at 1000.
+  zIndex: 500,
   background: color.navBg,
   borderBottom: `1px solid ${color.border}`,
   display: 'flex',
   alignItems: 'center',
-  gap: metric.gapMd,
+  gap: 12, // was gapMd(8) — user 2026-07-21: nav cluster read too tight
   padding: `0 ${metric.gapLg}px`,
   fontSize: typeTok.secondary,
   color: color.text,
@@ -319,7 +325,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   // and again whenever canvasName or the reactive rootPrompt resolve to a
   // better label — exactly "refresh on mount and on rename" per the brief.
   useEffect(() => {
-    const label = canvasName && canvasName.trim() ? canvasName : (rootPrompt ?? 'untitled canvas')
+    const label = canvasName && canvasName.trim() ? canvasName : (rootPrompt ?? 'Untitled')
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecent(upsertRecent(canvasId, label.slice(0, 40)))
   }, [canvasId, rootPrompt, canvasName])
@@ -519,10 +525,10 @@ export function TopNav({ canvasId }: { canvasId: string }) {
       <Link
         href="/"
         title="all canvases · home"
-        style={{ display: 'flex', alignItems: 'center', gap: 6, color: color.text, textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, color: color.text, textDecoration: 'none', fontWeight: 600, flexShrink: 0, marginRight: 10 }}
       >
         <MediaLabMark size={16} />
-        <span>Media Lab</span>
+        <span>Media Canvas</span>
       </Link>
 
       {editingCanvasName ? (
@@ -532,7 +538,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
           onChange={(e) => setCanvasNameDraft(e.target.value)}
           onKeyDown={onCanvasNameKeyDown}
           onBlur={cancelEditCanvasName}
-          placeholder="untitled canvas"
+          placeholder="Untitled"
           className="gm-input"
           style={navInput}
         />
@@ -550,7 +556,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
             whiteSpace: 'nowrap',
           }}
         >
-          {displayCanvasName || 'untitled canvas'}
+          {displayCanvasName || 'Untitled'}
         </span>
       )}
 
@@ -707,6 +713,11 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         />
         <span style={{ color: color.textSecondary, fontSize: typeTok.micro }}>{saveDot.label}</span>
       </span>
+
+      {/* Theme toggle (user 2026-07-21): flips the CSS palette via
+          data-gm-theme AND mirrors the choice into tldraw's own (non-CSS)
+          color scheme so canvas + chrome switch together. */}
+      <ThemeToggle onChange={(t) => editor.user.updateUserPreferences({ colorScheme: t })} />
 
       {importError && (
         <div
