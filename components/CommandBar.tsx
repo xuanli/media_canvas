@@ -337,9 +337,11 @@ export function CommandBar() {
           // eslint-disable-next-line react-hooks/set-state-in-effect
           setRefIds((prev) => (prev.includes(sel.id) ? prev : [...prev, sel.id]))
           setPickingRef(false)
-          // combined-mode rule (2026-07-21): a canvas pick ends the assets
-          // half too. getState() so this guarded effect's deps stay untouched.
-          useUiStore.getState().setAssetsDrawer(null)
+          // combined-mode rule (2026-07-21): a canvas pick ends the ATTACH
+          // half; the drawer itself stays open in browse mode (user pref).
+          // getState() so this guarded effect's deps stay untouched.
+          const st = useUiStore.getState()
+          if (st.assetsDrawer === 'attach') st.setAssetsDrawer('add')
         }
         restoringRef.current = true
         editor.select(targetId)
@@ -530,7 +532,7 @@ export function CommandBar() {
             path preserved inside the popover. */}
         <button
           className="gm-btn"
-          onClick={() => setAssetsDrawer(assetsDrawer ? null : 'add')}
+          onClick={() => setAssetsDrawer(assetsDrawer ? null : 'add')} // quick toggle; the drawer's own handle handles persistence
           disabled={uploading}
           style={buttonSecondary({ disabled: uploading, active: assetsDrawer === 'add' })}
           title="add an image — upload, your assets, or presets"
@@ -985,7 +987,7 @@ export function CommandBar() {
                       onClick={() => {
                         if (pickingRef || assetsDrawer === 'attach') {
                           setPickingRef(false)
-                          setAssetsDrawer(null)
+                          if (assetsDrawer === 'attach') setAssetsDrawer('add') // stay open
                         } else {
                           startPick()
                           setAssetsDrawer('attach')

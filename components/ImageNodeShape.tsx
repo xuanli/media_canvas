@@ -202,15 +202,6 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
     return resizeBox(shape, info)
   }
 
-  // Polish (Task 12): double-click a node to frame it. `this.editor` is set
-  // by the base ShapeUtil constructor — no hook needed since this runs
-  // outside React's render (a tldraw pointer-event callback), unlike
-  // `component()` below.
-  override onDoubleClick(shape: ImageNodeShape) {
-    const bounds = this.editor.getShapePageBounds(shape.id)
-    if (bounds) this.editor.zoomToBounds(bounds, { animation: { duration: 220 } })
-  }
-
   override component(shape: ImageNodeShape) {
     // Delegates to a real function component: eslint's rules-of-hooks
     // statically forbids hook calls inside a class method even though tldraw

@@ -179,6 +179,9 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
           onMount={onMount}
           hideUi
           licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
+          // Double-clicking empty canvas creates a text shape by default —
+          // stray text shapes make no sense in an image-node canvas.
+          options={{ createTextOnCanvasDoubleClick: false }}
         >
           <TopNav canvasId={canvasId} />
           <CommandBar />
@@ -261,6 +264,7 @@ function EmptyHint() {
 // and the collision math is symmetric left<->right) and the current lift
 // constant's derivation.
 function ZoomCluster() {
+  const assetsDrawerOpen = useUiStore((st) => st.assetsDrawer !== null)
   const editor = useEditor()
   const zoom = useValue('zoom-cluster-level', () => editor.getZoomLevel(), [editor])
   const hasSelection = useValue(
@@ -290,7 +294,7 @@ function ZoomCluster() {
       // specifically so the collision-avoidance media queries in
       // app/globals.css can override `bottom` per breakpoint without an
       // !important fight against an inline style.
-      className="gm-zoom-cluster"
+      className={`gm-zoom-cluster${assetsDrawerOpen ? " gm-zoom-cluster--shifted" : ""}`}
       title={`Zoom: ${percent}%`}
       style={{
         display: 'flex',

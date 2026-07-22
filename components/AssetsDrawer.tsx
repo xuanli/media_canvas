@@ -73,9 +73,18 @@ export function AssetsDrawer() {
   const fileRef = useRef<HTMLInputElement>(null)
   void assetsVersion
 
-  const close = () => {
+  // EXPLICIT collapse (handle/✕/Esc-in-add-mode): closes and remembers.
+  const collapse = () => {
     if (assetsDrawer === 'attach') setPickingRef(false) // combined-mode rule
     setAssetsDrawer(null)
+    try {
+      localStorage.setItem('gm-drawer-collapsed', '1')
+    } catch {}
+  }
+  // Soft exit from attach mode: back to the always-open 'add' state.
+  const exitAttach = () => {
+    setPickingRef(false)
+    setAssetsDrawer('add')
   }
 
   // Escape closes (capture-phase, consumed so the global Esc layering
@@ -85,7 +94,8 @@ export function AssetsDrawer() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        close()
+        if (assetsDrawer === 'attach') exitAttach()
+        else collapse()
       }
     }
     document.addEventListener('keydown', onKeyDown, { capture: true })
@@ -99,7 +109,15 @@ export function AssetsDrawer() {
   const handle = (
     <button
       aria-label={open ? 'collapse assets' : 'open assets'}
-      onClick={() => (open ? close() : setAssetsDrawer('add'))}
+      onClick={() => {
+        if (open) collapse()
+        else {
+          try {
+            localStorage.removeItem('gm-drawer-collapsed')
+          } catch {}
+          setAssetsDrawer('add')
+        }
+      }}
       style={{
         position: 'absolute',
         top: '50%',
@@ -133,7 +151,9 @@ export function AssetsDrawer() {
 
   const finishPlace = (nodeId: string) => {
     if (assetsDrawer === 'attach') setPendingRefAttach(nodeId)
-    setAssetsDrawer(null)
+    // stay open (user 2026-07-21): placing/attaching never closes the drawer,
+    // it just returns to the browse state.
+    setAssetsDrawer('add')
   }
 
   const place = async (item: Item) => {
@@ -219,7 +239,7 @@ export function AssetsDrawer() {
         </div>
         <button
           aria-label="close assets"
-          onClick={close}
+          onClick={collapse}
           style={{ background: 'none', border: 'none', color: color.textSecondary, cursor: 'pointer', padding: 4 }}
         >
           <IconX size={14} />

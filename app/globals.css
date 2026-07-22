@@ -148,6 +148,10 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   left: 12px;
   z-index: 300;
 }
+/* Persistent assets drawer (272px) open: keep the cluster visible beside it. */
+.gm-zoom-cluster--shifted {
+  left: 284px;
+}
 @media (max-width: 1140px) {
   /* !important: both buttons carry an inline `style` (ZoomCluster's shared
      `btnStyle` object sets `display`/`border` inline for token-driven

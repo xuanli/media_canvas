@@ -71,7 +71,11 @@ export const useUiStore = create<UiState>((set) => ({
   armedTool: null,
   pickingRef: false,
   saveState: 'saved',
-  assetsDrawer: null,
+  // Open by default (user 2026-07-21): the drawer is a persistent panel;
+  // only an EXPLICIT collapse (handle/✕/Esc in add mode) closes it, and that
+  // choice is remembered per browser.
+  assetsDrawer:
+    typeof localStorage !== 'undefined' && localStorage.getItem('gm-drawer-collapsed') === '1' ? null : 'add',
   pendingRefAttach: null,
   cropFrac: null,
   regionMode: false,
