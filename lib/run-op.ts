@@ -213,7 +213,7 @@ export async function runInstantOp(
 // dispatch()'s done() backfill in this file) since /api/upload doesn't
 // report them. Status is 'done' immediately — unlike runOp's pending->done
 // flow, there's no async model call in flight once the dims are known.
-export function createUploadedRoot(editor: Editor, url: string, filename: string): Promise<void> {
+export function createUploadedRoot(editor: Editor, url: string, filename: string): Promise<TLShapeId> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -250,7 +250,7 @@ export function createUploadedRoot(editor: Editor, url: string, filename: string
           name: nameFromFilename(filename),
         },
       })
-      resolve()
+      resolve(id)
     }
     img.onerror = () => reject(new Error('could not read the uploaded image'))
     img.src = url

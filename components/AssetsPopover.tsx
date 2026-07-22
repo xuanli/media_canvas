@@ -21,7 +21,7 @@
 // existing pick-a-node flow — drop the asset first, then pick it.
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { useEditor } from 'tldraw'
+import { useEditor, type TLShapeId } from 'tldraw'
 import { createUploadedRoot } from '@/lib/run-op'
 import { apiPost, apiDelete } from '@/lib/api-client'
 import { PRESET_ASSETS } from '@/lib/preset-assets'
@@ -78,7 +78,17 @@ const tabBtn = (active: boolean): React.CSSProperties => ({
   cursor: 'pointer',
 })
 
-export function AssetsPopover({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AssetsPopover({
+  open,
+  onClose,
+  onPlaced,
+}: {
+  open: boolean
+  onClose: () => void
+  /** Called with the created node's id after an asset lands on the canvas —
+   *  used by the Edit tray to auto-attach the new node as a reference. */
+  onPlaced?: (id: TLShapeId) => void
+}) {
   const editor = useEditor()
   const [tab, setTab] = useState<'upload' | 'yours' | 'presets'>('upload')
   // Assets derive from localStorage at render time (sync, cheap) — a version
@@ -121,7 +131,8 @@ export function AssetsPopover({ open, onClose }: { open: boolean; onClose: () =>
     setBusy(key)
     setError(null)
     try {
-      await createUploadedRoot(editor, url, name)
+      const nodeId = await createUploadedRoot(editor, url, name)
+      onPlaced?.(nodeId)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not place image')
@@ -136,7 +147,8 @@ export function AssetsPopover({ open, onClose }: { open: boolean; onClose: () =>
     try {
       const dataUrl = await rasterizeToPngDataUrl(url)
       const up = await apiPost<{ url: string }>('/api/upload', { dataUrl }, false)
-      await createUploadedRoot(editor, up.url, name)
+      const nodeId = await createUploadedRoot(editor, up.url, name)
+      onPlaced?.(nodeId)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not place preset')
@@ -162,7 +174,8 @@ export function AssetsPopover({ open, onClose }: { open: boolean; onClose: () =>
       const name = file.name.replace(/\.[^.]+$/, '')
       saveAssets([{ id: res.id, url: res.url, name, at: Date.now() }, ...loadAssets()])
       setAssetsVersion((v) => v + 1)
-      await createUploadedRoot(editor, res.url, file.name)
+      const nodeId = await createUploadedRoot(editor, res.url, file.name)
+      onPlaced?.(nodeId)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'upload failed')

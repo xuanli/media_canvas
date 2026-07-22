@@ -286,6 +286,7 @@ export function CommandBar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [assetsOpen, setAssetsOpen] = useState(false)
+  const [refAssetsOpen, setRefAssetsOpen] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
   // Task 15A: click-to-edit node name on the SELECTED recipe line.
@@ -739,7 +740,17 @@ export function CommandBar() {
   )
 
   return (
-    <div style={{ ...barShell, padding: BAR_PADDING }} className="gm-bar">
+    <div
+      style={{
+        ...barShell,
+        padding: BAR_PADDING,
+        // Same clipping trap as the idle bar (user-reported invisible
+        // popover): the reference-assets popover renders ABOVE this shell,
+        // so unclip while it's open; overflow:hidden otherwise (tray slide).
+        overflow: refAssetsOpen ? 'visible' : 'hidden',
+      }}
+      className="gm-bar"
+    >
       {!armedTool && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
@@ -909,18 +920,38 @@ export function CommandBar() {
                     "always enabled" today, but the disable is no longer
                     hardcoded to "region is on". */}
                 {!refId && (
-                  <button
-                    className="gm-btn"
-                    onClick={startPick}
-                    title={
-                      pickingRef
-                        ? 'click a done node on the canvas to attach it as a reference'
-                        : 'attach another node as a reference image'
-                    }
-                    style={buttonSecondary({ active: pickingRef, quiet: true })}
-                  >
-                    {pickingRef ? 'Pick a node…' : '+ Reference'}
-                  </button>
+                  <>
+                    <button
+                      className="gm-btn"
+                      onClick={startPick}
+                      title={
+                        pickingRef
+                          ? 'click a done node on the canvas to attach it as a reference'
+                          : 'attach another node as a reference image'
+                      }
+                      style={buttonSecondary({ active: pickingRef, quiet: true })}
+                    >
+                      {pickingRef ? 'Pick a node…' : '+ Reference'}
+                    </button>
+                    {/* user request 2026-07-21: references can come from the
+                        assets library too. The asset drops onto the canvas as
+                        a root node (product invariant: every influence is a
+                        visible node + dashed ref arrow) and auto-attaches. */}
+                    <button
+                      className="gm-btn"
+                      aria-label="reference from assets"
+                      onClick={() => setRefAssetsOpen((v) => !v)}
+                      title="attach a reference from your assets or presets"
+                      style={buttonSecondary({ active: refAssetsOpen, quiet: true })}
+                    >
+                      assets <IconChevronDown size={11} />
+                    </button>
+                    <AssetsPopover
+                      open={refAssetsOpen}
+                      onClose={() => setRefAssetsOpen(false)}
+                      onPlaced={(id) => setRefId(id)}
+                    />
+                  </>
                 )}
                 <button
                   className="gm-btn"
