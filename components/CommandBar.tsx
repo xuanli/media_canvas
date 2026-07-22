@@ -27,7 +27,7 @@ import { runOp, runInstantOp, createUploadedRoot } from '@/lib/run-op'
 import { apiPost } from '@/lib/api-client'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import type { RectFrac } from '@/lib/types'
-import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton } from '@/lib/design'
+import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton, elevation } from '@/lib/design'
 import { IconDownload, IconUpload, IconX } from '@/components/icons'
 
 // ── Ported verbatim from Inspector.tsx (task-10/11 fix-round comments kept) ──
@@ -92,11 +92,13 @@ const EDIT_MODELS = [
 ] as const
 
 // verbs shown in both the SELECTED calm bar and pinned to the ARMED tray's
-// bottom row (ActionMenu.tsx's VERBS list, unchanged).
+// bottom row (ActionMenu.tsx's VERBS list). Task 15D (user decision
+// 2026-07-21): '✦ Vary' removed outright — it fired an immediate no-form
+// edit op with no tray of its own, and the user asked for the verb gone
+// entirely rather than hidden/disabled.
 const VERBS = [
   ['edit', '✦ Edit'],
   ['inpaint', '✦ Inpaint'],
-  ['vary', '✦ Vary'],
   ['crop', 'Crop'],
   ['resize', 'Resize'],
 ] as const
@@ -106,9 +108,17 @@ const VERBS = [
 // task fixes: `field`/`primaryBtn`/the old Upload button override all now
 // share the exact same `metric.controlH` (32px) instead of drifting). ──
 
+// Task 15D: the bar now FLOATS above the canvas edge instead of sitting
+// flush against it — bottom offset 12 -> 28, plus a soft elevation shadow
+// (lib/design.ts's `elevation.bar`) to sell the raised framing. The
+// <=960px watermark-clearance override in app/globals.css
+// (`.gm-bar { bottom: 44px !important }`) still applies unchanged: 44 was
+// already derived to clear the tldraw watermark's y-band with margin
+// regardless of this component's own default bottom, so raising the
+// default here doesn't need that derivation redone (44 > 28 either way).
 const barShell: CSSProperties = {
   position: 'absolute',
-  bottom: 12,
+  bottom: 28,
   left: '50%',
   transform: 'translateX(-50%)',
   zIndex: 300,
@@ -119,11 +129,16 @@ const barShell: CSSProperties = {
   color: color.text,
   fontSize: typeTok.secondary,
   fontFamily: typeTok.fontUi,
+  boxShadow: elevation.bar,
   // "simple CSS max-height/transform transition" (brief) for the tray
   // slide-up; disabled under prefers-reduced-motion via app/globals.css's
   // `.gm-bar` rule.
   overflow: 'hidden',
 }
+
+// Task 15D: bar padding 8 -> 10 (brief: "bar padding ... 10px" as part of
+// the taller floating presence).
+const BAR_PADDING = 10
 
 const field: CSSProperties = inputField()
 
@@ -146,6 +161,87 @@ function verbBtnStyle(active: boolean, disabled: boolean): CSSProperties {
   // text/border keeps the armed state legible while leaving solid
   // color.accent free for exactly one control (Run) per screen.
   return buttonSecondary({ active, disabled, disabledColor: color.textDisabled, quiet: true })
+}
+
+const TRAY_THUMB_SIZE = 48
+
+// Task 15D: Edit/Inpaint tray-header thumbnails (source node always;
+// reference node too, once attached to an armed Edit). Replaces the old
+// text-only "ref: v{seq}" chip that used to live in the Edit form's control
+// row — the detach button's accessible name ("remove reference") is
+// preserved unchanged via `detachAriaLabel` so nothing that depended on
+// that name (e2e, screen readers) sees a behavior change, just a different
+// visual affordance. `onDetach` unset (source thumb) renders no detach
+// button at all.
+function TrayThumb({
+  src,
+  label,
+  onDetach,
+  detachAriaLabel,
+}: {
+  src?: string
+  label: string
+  onDetach?: () => void
+  detachAriaLabel?: string
+}) {
+  return (
+    <div
+      className={onDetach ? 'gm-thumb-wrap' : undefined}
+      style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', width: TRAY_THUMB_SIZE }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: TRAY_THUMB_SIZE,
+          height: TRAY_THUMB_SIZE,
+          borderRadius: 4,
+          overflow: 'hidden',
+          background: color.fieldBg,
+          border: `1px solid ${color.border}`,
+          flexShrink: 0,
+        }}
+      >
+        {src && (
+          // tldraw asset/data URLs (mock uploads included) aren't
+          // Next/Image compatible remote sources; every other node
+          // thumbnail in this codebase (ImageNodeShape's AssetView)
+          // already uses a plain <img> for the same reason.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        )}
+        {onDetach && (
+          <button
+            type="button"
+            className="gm-icon-btn gm-thumb-detach"
+            onClick={onDetach}
+            title={detachAriaLabel}
+            aria-label={detachAriaLabel}
+            style={{
+              position: 'absolute',
+              top: 2,
+              right: 2,
+              width: 16,
+              height: 16,
+              padding: 0,
+              background: 'rgba(0,0,0,0.65)',
+              border: 'none',
+              borderRadius: 3,
+              color: color.text,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <IconX size={10} />
+          </button>
+        )}
+      </div>
+      <span style={{ fontSize: 10, color: color.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: TRAY_THUMB_SIZE }}>
+        {label}
+      </span>
+    </div>
+  )
 }
 
 export function CommandBar() {
@@ -251,29 +347,13 @@ export function CommandBar() {
     setHeight(sel.props.naturalH)
   }, [armedTool, selId, sel])
 
-  // [PORTED VERBATIM from Inspector.tsx] Vary fires immediately on arming,
-  // no form. Guarded by a ref keyed on the selected shape id so a dev-mode
-  // StrictMode double effect invocation can't double-fire runOp.
-  const variedForRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (armedTool !== 'vary' || !sel) {
-      variedForRef.current = null
-      return
-    }
-    if (variedForRef.current === sel.id) return
-    variedForRef.current = sel.id
-    runOp(
-      editor,
-      sel.id,
-      {
-        type: 'edit',
-        prompt: 'subtle variation, keep composition and subject',
-        model: 'nano-banana',
-      },
-      2
-    )
-    setArmedTool(null)
-  }, [armedTool, sel, editor, setArmedTool])
+  // Task 15D (user decision 2026-07-21): the '✦ Vary' verb — and the
+  // no-form immediate-fire effect that used to live here — is REMOVED
+  // outright, not disabled. It always dispatched `{ type: 'edit', ... }` (no
+  // distinct 'vary' op type ever existed on a node's stored recipe), so
+  // deleting this effect has no data migration implications: any node a
+  // user previously created via Vary is stored and renders exactly like any
+  // other edit-created node.
 
   // ── IDLE mood handlers (ported from PromptBar.tsx, plus new Upload) ──
 
@@ -309,7 +389,7 @@ export function CommandBar() {
   // below, same rule Inspector followed with its `if (!sel) return null`.
   if (!sel) {
     return (
-      <div style={{ ...barShell, padding: 8, display: 'flex', gap: 6, alignItems: 'center' }} className="gm-bar">
+      <div style={{ ...barShell, padding: BAR_PADDING, display: 'flex', gap: 6, alignItems: 'center' }} className="gm-bar">
         <input
           ref={fileInputRef}
           type="file"
@@ -333,7 +413,7 @@ export function CommandBar() {
           onChange={(e) => setGenPrompt(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && go()}
           placeholder="Describe a new image…"
-          style={{ ...field, flex: 1 }}
+          style={{ ...inputField({ large: true }), flex: 1 }}
         />
         <button className="gm-btn" onClick={go} style={primaryBtn}>
           Generate
@@ -410,7 +490,6 @@ export function CommandBar() {
   }
 
   const refNode = refId ? editor.getShape(refId) : undefined
-  const refSeq = refNode && refNode.type === 'image-node' ? refNode.props.seq : undefined
 
   const runEdit = () => {
     if (!prompt.trim()) return
@@ -509,7 +588,7 @@ export function CommandBar() {
   )
 
   return (
-    <div style={{ ...barShell, padding: 8 }} className="gm-bar">
+    <div style={{ ...barShell, padding: BAR_PADDING }} className="gm-bar">
       {!armedTool && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
@@ -549,15 +628,28 @@ export function CommandBar() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           <div
             style={{
-              fontFamily: typeTok.fontMono,
-              fontSize: typeTok.micro,
-              color: color.textSecondary,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
               paddingBottom: 8,
               borderBottom: `1px solid ${color.border}`,
               marginBottom: 8,
             }}
           >
-            {trayHeader}
+            {(armedTool === 'edit' || armedTool === 'inpaint') && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <TrayThumb src={p.status === 'done' ? p.assetUrl : undefined} label="editing" />
+                {armedTool === 'edit' && refId && (
+                  <TrayThumb
+                    src={refNode && refNode.type === 'image-node' ? refNode.props.assetUrl : undefined}
+                    label="style ref"
+                    onDetach={() => setRefId(null)}
+                    detachAriaLabel="remove reference"
+                  />
+                )}
+              </div>
+            )}
+            <div style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>{trayHeader}</div>
           </div>
 
           {armedTool === 'edit' && (
@@ -568,7 +660,7 @@ export function CommandBar() {
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="describe the change…"
                 rows={2}
-                style={{ ...textareaField(), resize: 'vertical' }}
+                style={{ ...textareaField({ large: true }), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
@@ -586,42 +678,16 @@ export function CommandBar() {
                 <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
                   +
                 </button>
-                {refId ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span
-                      style={{
-                        background: color.fieldBg,
-                        color: color.accent,
-                        border: `1px solid ${color.accent}`,
-                        borderRadius: metric.radius,
-                        padding: '4px 8px',
-                        fontSize: typeTok.micro,
-                      }}
-                    >
-                      ref: v{refSeq ?? '?'}
-                    </span>
-                    <button
-                      className="gm-icon-btn"
-                      onClick={() => setRefId(null)}
-                      title="remove reference"
-                      aria-label="remove reference"
-                      style={{
-                        background: 'transparent',
-                        color: color.textSecondary,
-                        border: `1px solid ${color.border}`,
-                        borderRadius: metric.radiusSm,
-                        width: 22,
-                        height: 22,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <IconX size={12} />
-                    </button>
-                  </div>
-                ) : (
+                {/* Task 15D: the ref chip ("ref: v{seq}" + separate detach
+                    button) that used to render here when refId was set is
+                    GONE — its job moved to the "style ref" TrayThumb in the
+                    tray header above (same detach affordance, same
+                    "remove reference" accessible name, now on the
+                    thumbnail itself). This button stays exactly as before,
+                    just newly gated on `!refId` since there's nothing left
+                    for it to do once a ref is attached (re-picking means
+                    detach-then-"+ Reference" again, unchanged UX). */}
+                {!refId && (
                   <button
                     className="gm-btn"
                     onClick={startPick}
@@ -677,7 +743,7 @@ export function CommandBar() {
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="describe what appears in the region…"
                 rows={2}
-                style={{ ...textareaField(), resize: 'vertical' }}
+                style={{ ...textareaField({ large: true }), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: color.textSecondary }}>variants:</span>

@@ -54,6 +54,11 @@ export const color = {
 
 export const metric = {
   controlH: 32,
+  // Task 15D: the floating bar's own presence grew taller — the IDLE prompt
+  // input and the ARMED edit/inpaint textareas opt into this, everything
+  // else (model select, variant steppers, resize W/H fields) stays at the
+  // plain `controlH` per the brief's "secondary controls stay 32px".
+  controlHLarge: 40,
   radius: 8,
   radiusLg: 10, // node card
   radiusSm: 6, // dropdown rows / chips / small step buttons
@@ -78,6 +83,14 @@ export const motion = {
   fast: '120ms ease-out',
   base: '150ms ease-out',
   slow: '160ms ease-out',
+} as const
+
+// Task 15D: the command bar now floats above the canvas (bottom 12 -> 28)
+// instead of sitting flush — a soft elevation shadow sells the "raised"
+// framing. Token'd (not inlined in CommandBar.tsx) so any other surface
+// that floats above the canvas later reuses the same shadow language.
+export const elevation = {
+  bar: '0 12px 32px rgba(0,0,0,0.40), 0 2px 8px rgba(0,0,0,0.28)',
 } as const
 
 // ── control builders ────────────────────────────────────────────────────
@@ -190,10 +203,12 @@ export function stepButton(opts: ButtonOpts = {}): CSSProperties {
   }
 }
 
-/** Text input / select, single-line, exactly metric.controlH tall. */
-export function inputField(opts: { width?: number | string } = {}): CSSProperties {
+/** Text input / select, single-line. `large` opts into controlHLarge (Task
+ * 15D: the IDLE mood's own generate prompt input) — default stays
+ * metric.controlH for every other (secondary) control. */
+export function inputField(opts: { width?: number | string; large?: boolean } = {}): CSSProperties {
   return {
-    height: metric.controlH,
+    height: opts.large ? metric.controlHLarge : metric.controlH,
     padding: `0 ${metric.paddingX}px`,
     background: color.fieldBg,
     color: color.text,
@@ -206,10 +221,14 @@ export function inputField(opts: { width?: number | string } = {}): CSSPropertie
   }
 }
 
-/** Multi-line prompt field — no fixed height, sized by `rows`. */
-export function textareaField(): CSSProperties {
+/** Multi-line prompt field — no fixed height, sized by `rows`. `large`
+ * (Task 15D: armed edit/inpaint prompt textareas) roomier padding/line
+ * height so each row reads at the same taller `controlHLarge` scale as the
+ * idle prompt input, instead of just growing via more `rows`. */
+export function textareaField(opts: { large?: boolean } = {}): CSSProperties {
   return {
-    padding: `${metric.gapSm}px ${metric.paddingX}px`,
+    padding: opts.large ? '10px 12px' : `${metric.gapSm}px ${metric.paddingX}px`,
+    lineHeight: opts.large ? '20px' : undefined,
     background: color.fieldBg,
     color: color.text,
     border: `1px solid ${color.border}`,

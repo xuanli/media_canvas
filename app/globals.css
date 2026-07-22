@@ -102,52 +102,50 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 
 /* Review fix round 1 — zoom cluster / command bar collision avoidance.
    CommandBar's bar shell (components/CommandBar.tsx `barShell`) is
-   centered, `width: min(720px, calc(100vw - 24px))`, bottom:12, zIndex:300.
-   This cluster (components/CanvasApp.tsx ZoomCluster) sits bottom:12,
-   right:12, zIndex:300, in the same row. Below ~1104px viewport width the
-   bar's right edge (50vw + 360px, while it's still pinned to its 720px
-   max) crosses the cluster's left edge (100vw - 12px - cluster width).
-   Below 744px the bar has already eaten the full width down to ~12px
-   margins on each side, i.e. there is NEVER slack for anything beside it —
-   only stacking above/below avoids overlap there. Two breakpoints, sized
-   from that math (see the derivation comment on ZoomCluster in
-   CanvasApp.tsx):
+   CENTERED, `width: min(720px, calc(100vw - 24px))` — so the collision math
+   between it and this cluster is symmetric left<->right; only the side the
+   cluster sits on changes which edge is compared. Below ~1104px viewport
+   width the bar's near edge (50vw +/- 360px, while it's still pinned to its
+   720px max) crosses the cluster's far edge (12px + cluster width, from
+   whichever side). Below 744px the bar has already eaten the full width
+   down to ~12px margins on each side, i.e. there is NEVER slack for
+   anything beside it — only stacking above/below avoids overlap there. Two
+   breakpoints, sized from that math (see the derivation comment on
+   ZoomCluster in CanvasApp.tsx):
      - <=1140px: hide the percent-readout segment (`.gm-zoom-percent`),
        shrinking the cluster from ~180px to its measured compact width
        (~122px — the 3 icon segments plus dividers/border; a hand-estimate
        of ~100px undershot the real rendered "Fit" segment). Re-solving
-       bar-right-edge <= cluster-left-edge with that measured 122px cluster
-       gives a collision-free floor at an isolated-Playwright-measured
-       ~988px viewport width; 1140 keeps a comfortable margin above the
-       1104px floor for the FULL cluster, well clear of both.
+       bar-edge <= cluster-edge with that measured 122px cluster gives a
+       collision-free floor at an isolated-Playwright-measured ~988px
+       viewport width; 1140 keeps a comfortable margin above the 1104px
+       floor for the FULL cluster, well clear of both.
      - <=1020px: even the ~122px compact cluster has no horizontal room
        beside a 720px-max-width bar below the measured ~988px floor, so the
        cluster stacks above the bar's row instead (`bottom` increases past
        the tallest tray's rendered height) — 1020 keeps margin above that
-       988px floor. `bottom: 244px` covers the tallest observed tray (armed
-       'inpaint': measured 202px at an 800px viewport in an isolated
-       Playwright run) plus ~12px bar bottom offset plus 30px real margin. */
-/* Design-critique item 1 (watermark): the user chose "reserve layout space"
-   over a license key. The installed @tldraw/editor's own Watermark.tsx CSS
-   (LicenseManager.className rule, node_modules/.pnpm/@tldraw+editor.../src/
-   lib/license/Watermark.tsx) fixes the unlicensed/licensed-with-watermark
-   badge at `bottom: max(var(--tl-space-2), safe-area)` / `right: max(...)`
-   = 4px insets, 96x32px box — i.e. a reserved zone from (vw-100, vh-36) to
-   (vw-4, vh-4). Both `.gm-zoom-cluster` (bottom:12 before this fix) and
-   `.gm-bar` (bottom:12, see CommandBar.tsx's `barShell`) used to sit in
-   exactly that same bottom-right strip, clipping the watermark under their
-   own zIndex:300 vs. the watermark's zIndex:200 (shots 02/05/13/14 in the
-   critique). Fix: raise both to bottom:44 (36px watermark height + 8px
-   daylight) so neither ever shares the watermark's y-band — verified this
-   is sufficient rather than fought via x-only separation, since below
-   ~920px viewport width the centered bar's own width formula
-   (`min(720, 100vw-24)`) can't leave 100px of clear right margin no matter
-   what (the 24px total margin budget is fixed, independent of viewport
-   width, once the 100vw-24 branch is active). */
+       988px floor. See the `.gm-zoom-cluster` `bottom` value below (Task
+       15D) for the current lift constant and its derivation. */
+/* Task 15D (user feedback 2026-07-21): the cluster moves BOTTOM-LEFT
+   (`right` -> `left`). This also DROPS the old watermark-clearance need for
+   the cluster entirely: the tldraw watermark badge is bottom-RIGHT
+   (installed @tldraw/editor Watermark.tsx: `bottom`/`right` insets, a
+   reserved zone from (vw-100, vh-36) to (vw-4, vh-4) — see the design-
+   critique item-1 fix this superseded), and a bottom-LEFT cluster never
+   shares that zone's x-range at any viewport width, so no y-separation is
+   needed on the cluster's account any more (the old `bottom: 44px` for that
+   reason is gone). The only remaining bottom-left occupant is Next.js's own
+   dev-tools badge (dev builds only, never ships to production) — `bottom:
+   48px` clears it with a few px to spare; if that dev-only badge's own
+   size/position ever changes upstream, worst case is a dev-only visual
+   overlap, not a production issue. Bonus: since the cluster vacated the
+   bottom-right corner, the watermark now has that corner's y-band to
+   itself with the bar's own clearance (below) as the only remaining
+   constraint — strictly better than before, not just neutral. */
 .gm-zoom-cluster {
   position: absolute;
-  bottom: 44px;
-  right: 12px;
+  bottom: 48px;
+  left: 12px;
   z-index: 300;
 }
 @media (max-width: 1140px) {
@@ -162,23 +160,41 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   .gm-zoom-plus { border-left: 1px solid rgba(255, 255, 255, 0.08) !important; }
 }
 @media (max-width: 1020px) {
-  /* 276 = 202 (tallest tray, armed 'inpaint', measured at 800px viewport
-     per Fix round 2) + 44 (.gm-bar's own bottom offset once the watermark
-     fix below also raises it at <=960px, the only sub-range where both
-     lifts are simultaneously active) + 30 real margin — recomputed from the
-     prior 244 (which assumed a 12px bar bottom) so this cluster still
-     clears the bar's new top edge instead of landing 2px inside it. */
-  .gm-zoom-cluster { bottom: 276px; }
+  /* Task 15D re-derivation, measured (not guessed) with an isolated
+     Playwright script sweeping the whole affected width range
+     (744/800/900/960/1000/1020 at an 800px-tall viewport, armed
+     'inpaint' — the tallest mood, now taller again with the source
+     thumbnail row): `.gm-bar`'s rendered height is a flat 292px across
+     that entire range (no wrap-driven growth at the narrower end), and its
+     OWN bottom offset is 44px for width<=960 (the watermark-clearance
+     override below is simultaneously active there — bar top measured at
+     y=464 on an 800px-tall viewport) vs. the unraised default 28px for
+     960<width<=1020 (bar top measured at y=480) — the <=960 sub-range is
+     the binding (higher/more demanding) case. Lift constant = tallest bar
+     height + bar's bottom offset in the binding sub-range + margin:
+     360 = 292 (measured .gm-bar height, armed 'inpaint') + 44 (measured
+     .gm-bar bottom offset, width<=960) + 24 margin. (Not reused from the
+     prior 244/276 — those assumed a 12px/44px bar bottom and a
+     thumbnail-less, unpadded-differently tray; this task changed both the
+     bar's own bottom offset and the tray's content, so the whole
+     derivation was redone against fresh measurements rather than adjusted
+     by inference.) */
+  .gm-zoom-cluster { bottom: 360px; }
 }
-/* Design-critique item 1, continued: below ~920px viewport width the bar
-   can no longer clear the watermark's reserved right-hand zone
-   horizontally (see the derivation above the .gm-zoom-cluster rule), so
-   raise it to bottom:44 — same "sit above the watermark's y-band entirely"
-   strategy already used for the zoom cluster — instead. 960 keeps a ~40px
-   safety margin above the exact ~920px floor. `!important`: `.gm-bar`'s
-   `bottom` is set inline by CommandBar.tsx's `barShell`/`{ ...barShell,
-   padding: 8 }` objects — same "inline beats non-!important stylesheet"
-   reason as `.gm-zoom-percent` above. */
+/* Design-critique item 1 (watermark), still active for the BAR: below
+   ~920px viewport width the centered bar's own width formula
+   (`min(720, 100vw-24)`) can't leave 100px of clear right margin no matter
+   what (the 24px total margin budget is fixed once the 100vw-24 branch is
+   active), so it can still creep into the watermark's reserved right-hand
+   zone. Raising it to bottom:44 (36px watermark height + 8px daylight) sits
+   it above the watermark's y-band entirely, same strategy as before. 960
+   keeps a ~40px safety margin above the exact ~920px floor. This is
+   unaffected by the cluster's move to bottom-left (a separate corner) or by
+   the bar's own new default bottom (28, still less than 44, so this
+   override still raises it further at these widths). `!important`:
+   `.gm-bar`'s `bottom` is set inline by CommandBar.tsx's `barShell`/
+   `{ ...barShell, padding: BAR_PADDING }` objects — same "inline beats
+   non-!important stylesheet" reason as `.gm-zoom-percent` above. */
 @media (max-width: 960px) {
   .gm-bar { bottom: 44px !important; }
 }
