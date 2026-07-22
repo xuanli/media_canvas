@@ -273,7 +273,9 @@ export function CommandBar() {
   const [preset, setPreset] = useState<string>('free')
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
-  const [refId, setRefId] = useState<TLShapeId | null>(null)
+  // Multi-reference (user 2026-07-21): the Edit tray holds N references —
+  // repeated + Reference picks append; multi-select normalizes into this.
+  const [refIds, setRefIds] = useState<TLShapeId[]>([])
 
   // IDLE mood's own generate input — separate local state from `prompt`
   // (edit/inpaint's field) since the two moods are mutually exclusive but
@@ -333,8 +335,11 @@ export function CommandBar() {
       if (sel && targetId && sel.id !== targetId) {
         if (sel.props.status === 'done') {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setRefId(sel.id)
+          setRefIds((prev) => (prev.includes(sel.id) ? prev : [...prev, sel.id]))
           setPickingRef(false)
+          // combined-mode rule (2026-07-21): a canvas pick ends the assets
+          // half too. getState() so this guarded effect's deps stay untouched.
+          useUiStore.getState().setAssetsDrawer(null)
         }
         restoringRef.current = true
         editor.select(targetId)
@@ -353,7 +358,7 @@ export function CommandBar() {
       setVariants(1)
       setPreset('free')
       setCropFrac(null)
-      setRefId(null)
+      setRefIds([])
       setEditingName(false)
       // Task 18 addition: a stale "Select region" toggle must not survive
       // onto a newly-selected node — armedTool itself isn't reset by this
@@ -390,9 +395,34 @@ export function CommandBar() {
   // the selId-reset effect can't race this.
   useEffect(() => {
     if (!pendingRefAttach) return
-    setRefId(pendingRefAttach as TLShapeId)
+    const rid = pendingRefAttach as TLShapeId
+    setRefIds((prev) => (prev.includes(rid) ? prev : [...prev, rid]))
     setPendingRefAttach(null)
-  }, [pendingRefAttach, setPendingRefAttach])
+    // combined-mode rule: an asset pick ends the canvas-pick half too
+    setPickingRef(false)
+  }, [pendingRefAttach, setPendingRefAttach, setPickingRef])
+
+  // Multi-select normalization (user 2026-07-21: a separate multi-select
+  // "combine" tray was strange — selecting 2+ nodes is just a fast way to
+  // say base + references). Collapse the selection to the first-selected
+  // (base) and queue the rest; they land as reference thumbs in the ONE
+  // familiar Edit tray (auto-armed by the selection effect above). The
+  // consume effect runs after the selection-reset effect has cleared state
+  // for the new selection (declaration order = run order).
+  const pendingMultiRefsRef = useRef<TLShapeId[] | null>(null)
+  useEffect(() => {
+    if (!multiSel) return
+    const [base, ...rest] = multiSel
+    pendingMultiRefsRef.current = rest.map((r) => r.id)
+    editor.select(base.id)
+  }, [multiSel, editor])
+  useEffect(() => {
+    const queued = pendingMultiRefsRef.current
+    if (!queued || !selId) return
+    pendingMultiRefsRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ordered handoff, runs once per queue
+    setRefIds((prev) => [...new Set([...prev, ...queued])])
+  }, [selId])
 
   // [PORTED VERBATIM from Inspector.tsx] Clear the drawn region rect and any
   // in-progress prompt on EVERY armedTool change (tracked via a ref so
@@ -410,7 +440,7 @@ export function CommandBar() {
     if (armedTool !== prevArmedToolRef.current) {
       setCropFrac(null)
       setPrompt('')
-      setRefId(null)
+      setRefIds([])
       setRegionMode(false)
     }
     prevArmedToolRef.current = armedTool
@@ -466,81 +496,6 @@ export function CommandBar() {
 
   // Hooks are all unconditional above this point; only rendering branches
   // below, same rule Inspector followed with its `if (!sel) return null`.
-  // MULTI mood (user 2026-07-21): 2+ done nodes selected → combine tray.
-  // First-selected = base (child hangs off it), rest attach as references
-  // with dashed ref arrows. Reuses the edit op with referenceNodeIds.
-  if (!sel && multiSel) {
-    const [base, ...refs] = multiSel
-    const runCombine = () => {
-      if (!prompt.trim()) return
-      runOp(
-        editor,
-        base.id,
-        { type: 'edit', prompt, model, referenceNodeIds: refs.map((r) => r.id) },
-        variants,
-        (id) => {
-          const n = editor.getShape(id as TLShapeId)
-          return n && n.type === 'image-node' ? (n as ImageNodeShape).props.assetUrl : undefined
-        },
-        undefined,
-        refs.map((r) => r.id)
-      )
-      setPrompt('')
-    }
-    return (
-      <div style={{ ...barShell, padding: BAR_PADDING, display: 'flex', flexDirection: 'column', gap: 8 }} className="gm-bar">
-        <div style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
-          ✦ Combine {multiSel.length} images — creates a child of{' '}
-          <span style={{ color: color.text }}>{base.props.name?.trim() || `v${base.props.seq}`}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {multiSel.map((n, i) => (
-            <div key={n.id} style={{ textAlign: 'center' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={n.props.assetUrl}
-                alt=""
-                style={{
-                  width: 44,
-                  height: 32,
-                  objectFit: 'cover',
-                  borderRadius: 4,
-                  border: `1px solid ${i === 0 ? color.accent : color.border}`,
-                  display: 'block',
-                }}
-              />
-              <div style={{ fontSize: 9, color: i === 0 ? color.accent : color.textMuted }}>{i === 0 ? 'base' : 'ref'}</div>
-            </div>
-          ))}
-          <textarea
-            className="gm-input"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                runCombine()
-              }
-            }}
-            placeholder="describe the image to create from these…"
-            rows={1}
-            style={{ ...textareaField(), flex: 1, minHeight: 36, resize: 'none' }}
-          />
-          <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={{ ...field, width: 130 }}>
-            {EDIT_MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <button className="gm-btn" onClick={runCombine} disabled={!prompt.trim()} style={buttonPrimary({ disabled: !prompt.trim() })}>
-            Run
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   if (!sel) {
     // NOTE: no `position` override on the div below — barShell is
     // position:absolute and must stay so (a prior inline edit set relative
@@ -713,7 +668,7 @@ export function CommandBar() {
     return s && s.type === 'image-node' ? s.props.assetUrl : undefined
   }
 
-  const refNode = refId ? editor.getShape(refId) : undefined
+
 
   // Task 18: unified Run — routes by whether a region is active (see
   // `regionActive` above), UNCHANGED schema/dispatch either way (run-op.ts's
@@ -731,25 +686,27 @@ export function CommandBar() {
       runOp(
         editor,
         sel.id,
-        { type: 'inpaint', prompt, model: 'gpt-image-2', rect, referenceNodeId: refId ?? undefined },
+        { type: 'inpaint', prompt, model: 'gpt-image-2', rect, referenceNodeIds: refIds.length ? [...refIds] : undefined },
         variants,
         resolveRef,
-        refId ?? undefined
+        undefined,
+        refIds.length ? [...refIds] : undefined
       )
     } else {
       runOp(
         editor,
         sel.id,
-        { type: 'edit', prompt, model, referenceNodeId: refId ?? undefined },
+        { type: 'edit', prompt, model, referenceNodeIds: refIds.length ? [...refIds] : undefined },
         variants,
         resolveRef,
-        refId ?? undefined
+        undefined,
+        refIds.length ? [...refIds] : undefined
       )
     }
     setArmedTool(null)
     setPrompt('')
     setVariants(1)
-    setRefId(null)
+    setRefIds([])
     setCropFrac(null)
     setRegionMode(false)
   }
@@ -765,7 +722,7 @@ export function CommandBar() {
     const next = !regionMode
     setRegionMode(next)
     setCropFrac(null)
-    if (next) setRefId(null)
+    if (next) setRefIds([])
   }
 
   const pickPreset = (name: string, ratio: number | null) => {
@@ -894,14 +851,18 @@ export function CommandBar() {
             {armedTool === 'edit' && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <TrayThumb src={p.status === 'done' ? p.assetUrl : undefined} label="editing" />
-                {refId && (
-                  <TrayThumb
-                    src={refNode && refNode.type === 'image-node' ? refNode.props.assetUrl : undefined}
-                    label="style ref"
-                    onDetach={() => setRefId(null)}
-                    detachAriaLabel="remove reference"
-                  />
-                )}
+                {refIds.map((rid) => {
+                  const rn = editor.getShape(rid)
+                  return (
+                    <TrayThumb
+                      key={rid}
+                      src={rn && rn.type === 'image-node' ? (rn as ImageNodeShape).props.assetUrl : undefined}
+                      label="style ref"
+                      onDetach={() => setRefIds((prev) => prev.filter((x) => x !== rid))}
+                      detachAriaLabel="remove reference"
+                    />
+                  )
+                })}
               </div>
             )}
             <div style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>{trayHeader}</div>
@@ -1012,32 +973,28 @@ export function CommandBar() {
                     param, that capability check trivially reduces to
                     "always enabled" today, but the disable is no longer
                     hardcoded to "region is on". */}
-                {!refId && (
+                {(
                   <>
+                    {/* ONE reference entry point (user 2026-07-21): clicking
+                        arms canvas pick mode AND opens the assets drawer in
+                        attach mode simultaneously — whichever source the user
+                        clicks first wins; succeeding or canceling either ends
+                        both (combined-mode rule). */}
                     <button
                       className="gm-btn"
-                      onClick={startPick}
-                      title={
-                        pickingRef
-                          ? 'click a done node on the canvas to attach it as a reference'
-                          : 'attach another node as a reference image'
-                      }
-                      style={buttonSecondary({ active: pickingRef, quiet: true })}
+                      onClick={() => {
+                        if (pickingRef || assetsDrawer === 'attach') {
+                          setPickingRef(false)
+                          setAssetsDrawer(null)
+                        } else {
+                          startPick()
+                          setAssetsDrawer('attach')
+                        }
+                      }}
+                      title="pick a node on the canvas, or choose from assets"
+                      style={buttonSecondary({ active: pickingRef || assetsDrawer === 'attach', quiet: true })}
                     >
-                      {pickingRef ? 'Pick a node…' : '+ Reference'}
-                    </button>
-                    {/* user request 2026-07-21: references can come from the
-                        assets library too. The asset drops onto the canvas as
-                        a root node (product invariant: every influence is a
-                        visible node + dashed ref arrow) and auto-attaches. */}
-                    <button
-                      className="gm-btn"
-                      aria-label="reference from assets"
-                      onClick={() => setAssetsDrawer(assetsDrawer === 'attach' ? null : 'attach')}
-                      title="attach a reference from your assets or presets"
-                      style={buttonSecondary({ active: assetsDrawer === 'attach', quiet: true })}
-                    >
-                      assets <IconChevronDown size={11} />
+                      {pickingRef ? 'Pick a node or asset…' : '+ Reference'}
                     </button>
                   </>
                 )}

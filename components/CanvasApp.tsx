@@ -82,9 +82,11 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
       // when the arrows themselves are then deleted.
       const stopCascade = editor.sideEffects.registerBeforeDeleteHandler('shape', (shape) => {
         if (shape.type !== 'image-node') return
-        const arrowIds = editor
-          .getBindingsToShape(shape.id, 'arrow')
-          .map((b) => b.fromId)
+        // getBindingsInvolvingShape (not just ...ToShape): belt-and-braces
+        // across binding directions; arrow shape id is binding.fromId. The
+        // registered before-delete point still sees the bindings (tldraw
+        // removes them after shape before-delete handlers run).
+        const arrowIds = [...new Set(editor.getBindingsInvolvingShape(shape.id, 'arrow').map((b) => b.fromId))]
         if (arrowIds.length) editor.deleteShapes(arrowIds)
       })
 

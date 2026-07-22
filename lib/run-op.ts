@@ -439,7 +439,8 @@ async function dispatch(
         // 'edit' branch above does and hands it through as referenceUrls;
         // the actual [parentUrl, refUrl].filter(Boolean) composition lives
         // in the registry mapper, not duplicated here.
-        const refUrl = op.referenceNodeId ? resolveRef(op.referenceNodeId) : undefined
+        const inpaintRefIds = [...(op.referenceNodeIds ?? []), ...(op.referenceNodeId ? [op.referenceNodeId] : [])]
+        const inpaintRefUrls = inpaintRefIds.map((id) => resolveRef(id)).filter((u): u is string => !!u)
         done(
           await apiPost<OpsResponse>('/api/ops', {
             capability: 'inpaint',
@@ -447,7 +448,7 @@ async function dispatch(
             prompt: op.prompt,
             imageUrl: parentUrl,
             maskUrl,
-            referenceUrls: refUrl ? [refUrl] : undefined,
+            referenceUrls: inpaintRefUrls.length ? inpaintRefUrls : undefined,
           })
         )
         break

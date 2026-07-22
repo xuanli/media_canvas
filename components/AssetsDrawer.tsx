@@ -64,7 +64,7 @@ type Item = { key: string; url: string; name: string; preset: boolean; deletable
 
 export function AssetsDrawer() {
   const editor = useEditor()
-  const { assetsDrawer, setAssetsDrawer, setPendingRefAttach } = useUiStore()
+  const { assetsDrawer, setAssetsDrawer, setPendingRefAttach, setPickingRef } = useUiStore()
   const open = assetsDrawer !== null
   const [assetsVersion, setAssetsVersion] = useState(0)
   const [busy, setBusy] = useState<string | null>(null)
@@ -73,6 +73,11 @@ export function AssetsDrawer() {
   const fileRef = useRef<HTMLInputElement>(null)
   void assetsVersion
 
+  const close = () => {
+    if (assetsDrawer === 'attach') setPickingRef(false) // combined-mode rule
+    setAssetsDrawer(null)
+  }
+
   // Escape closes (capture-phase, consumed so the global Esc layering
   // doesn't also deselect/disarm underneath the drawer).
   useEffect(() => {
@@ -80,14 +85,46 @@ export function AssetsDrawer() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        setAssetsDrawer(null)
+        close()
       }
     }
     document.addEventListener('keydown', onKeyDown, { capture: true })
     return () => document.removeEventListener('keydown', onKeyDown, { capture: true })
-  }, [open, setAssetsDrawer])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- close is stable-enough (store setters)
+  }, [open, assetsDrawer])
 
-  if (!open) return null
+  // Persistent edge handle (user 2026-07-21): the drawer can always be
+  // opened/collapsed from a slim tab on the left edge, independent of the
+  // Upload / + Reference entry points.
+  const handle = (
+    <button
+      aria-label={open ? 'collapse assets' : 'open assets'}
+      onClick={() => (open ? close() : setAssetsDrawer('add'))}
+      style={{
+        position: 'absolute',
+        top: '50%',
+        left: open ? 272 : 0,
+        transform: 'translateY(-50%)',
+        zIndex: 451,
+        width: 18,
+        height: 64,
+        border: `1px solid ${color.border}`,
+        borderLeft: open ? undefined : 'none',
+        borderRadius: '0 8px 8px 0',
+        background: color.navBg,
+        color: color.textSecondary,
+        cursor: 'pointer',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 0,
+      }}
+      title={open ? 'collapse assets' : 'assets'}
+    >
+      <span style={{ fontSize: 10, transform: open ? 'rotate(180deg)' : undefined }}>›</span>
+    </button>
+  )
+
+  if (!open) return handle
 
   const items: Item[] = [
     ...loadAssets().map((a) => ({ key: a.id, url: a.url, name: a.name, preset: false, deletableId: a.id })),
@@ -154,6 +191,8 @@ export function AssetsDrawer() {
   }
 
   return (
+    <>
+    {handle}
     <div
       role="dialog"
       aria-label="assets"
@@ -180,7 +219,7 @@ export function AssetsDrawer() {
         </div>
         <button
           aria-label="close assets"
-          onClick={() => setAssetsDrawer(null)}
+          onClick={close}
           style={{ background: 'none', border: 'none', color: color.textSecondary, cursor: 'pointer', padding: 4 }}
         >
           <IconX size={14} />
@@ -276,5 +315,6 @@ export function AssetsDrawer() {
         onCancel={() => setConfirmId(null)}
       />
     </div>
+    </>
   )
 }
