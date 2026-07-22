@@ -25,11 +25,23 @@ type Tool = null | 'edit' | 'crop' | 'resize'
 // of) the title updates — the title stays as a secondary, tab-visible signal.
 type SaveState = 'saved' | 'saving' | 'error'
 
+// Assets drawer (user 2026-07-21, replaces the small popover): 'add' = pick
+// drops onto canvas as a root node; 'attach' = same, plus auto-attaches the
+// new node as the Edit reference (consumed via pendingRefAttach below).
+type AssetsDrawerMode = null | 'add' | 'attach'
+
 interface UiState {
   armedTool: Tool
   pickingRef: boolean
   saveState: SaveState
   setSaveState: (s: SaveState) => void
+  assetsDrawer: AssetsDrawerMode
+  setAssetsDrawer: (m: AssetsDrawerMode) => void
+  // Set by the drawer after an 'attach'-mode pick (the created node's id);
+  // CommandBar consumes it into refId and clears it. String to keep the
+  // store free of tldraw type imports.
+  pendingRefAttach: string | null
+  setPendingRefAttach: (id: string | null) => void
   // Ephemeral: the in-progress region rect drawn by CropOverlay OR
   // RegionOverlay (inpaint), as FRACTIONS (0..1) of the overlay's own
   // measured box — not a synthetic display-unit rect. Not persisted —
@@ -59,11 +71,15 @@ export const useUiStore = create<UiState>((set) => ({
   armedTool: null,
   pickingRef: false,
   saveState: 'saved',
+  assetsDrawer: null,
+  pendingRefAttach: null,
   cropFrac: null,
   regionMode: false,
   setArmedTool: (armedTool) => set({ armedTool }),
   setPickingRef: (pickingRef) => set({ pickingRef }),
   setSaveState: (saveState) => set({ saveState }),
+  setAssetsDrawer: (assetsDrawer) => set({ assetsDrawer }),
+  setPendingRefAttach: (pendingRefAttach) => set({ pendingRefAttach }),
   setCropFrac: (cropFrac) => set({ cropFrac }),
   setRegionMode: (regionMode) => set({ regionMode }),
 }))

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { ImageNodeUtil } from '@/components/ImageNodeShape'
 import { TopNav } from '@/components/TopNav'
 import { CommandBar } from '@/components/CommandBar'
+import { AssetsDrawer } from '@/components/AssetsDrawer'
 import { PasscodeGate } from '@/components/PasscodeGate'
 import { retryShape } from '@/lib/run-op'
 import { startSaveSync } from '@/lib/save-sync'
@@ -179,6 +180,7 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
         >
           <TopNav canvasId={canvasId} />
           <CommandBar />
+        <AssetsDrawer />
           <EmptyHint />
           <ZoomCluster />
         </Tldraw>

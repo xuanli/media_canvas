@@ -29,7 +29,6 @@ import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import type { RectFrac } from '@/lib/types'
 import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton, elevation } from '@/lib/design'
 import { IconChevronDown, IconDownload, IconUpload, IconX } from '@/components/icons'
-import { AssetsPopover } from '@/components/AssetsPopover'
 
 // ── Ported verbatim from Inspector.tsx (task-10/11 fix-round comments kept) ──
 
@@ -266,7 +265,7 @@ function TrayThumb({
 
 export function CommandBar() {
   const editor = useEditor()
-  const { armedTool, setArmedTool, cropFrac, setCropFrac, pickingRef, setPickingRef, regionMode, setRegionMode } =
+  const { armedTool, setArmedTool, cropFrac, setCropFrac, pickingRef, setPickingRef, regionMode, setRegionMode , assetsDrawer, setAssetsDrawer, pendingRefAttach, setPendingRefAttach } =
     useUiStore()
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<string>(EDIT_MODELS[0].id)
@@ -285,8 +284,7 @@ export function CommandBar() {
   const [genModel, setGenModel] = useState<string>(GENERATE_MODELS[0].id)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-  const [assetsOpen, setAssetsOpen] = useState(false)
-  const [refAssetsOpen, setRefAssetsOpen] = useState(false)
+
   const [uploadError, setUploadError] = useState<string | null>(null)
 
   // Task 15A: click-to-edit node name on the SELECTED recipe line.
@@ -385,6 +383,16 @@ export function CommandBar() {
     autoArmedForRef.current = selId
     if (armedTool === null) setArmedTool('edit')
   }, [selId, sel, pickingRef, armedTool, setArmedTool])
+
+  // Assets-drawer 'attach' handoff (user 2026-07-21): the drawer placed an
+  // asset as a root node and parked its id in ui-store; consume it into the
+  // Edit form's reference slot. Placing a root doesn't change selection, so
+  // the selId-reset effect can't race this.
+  useEffect(() => {
+    if (!pendingRefAttach) return
+    setRefId(pendingRefAttach as TLShapeId)
+    setPendingRefAttach(null)
+  }, [pendingRefAttach, setPendingRefAttach])
 
   // [PORTED VERBATIM from Inspector.tsx] Clear the drawn region rect and any
   // in-progress prompt on EVERY armedTool change (tracked via a ref so
@@ -565,12 +573,11 @@ export function CommandBar() {
             Your assets / Presets). Accessible name keeps "Upload" so the
             existing E2E upload selector still resolves; direct file-input
             path preserved inside the popover. */}
-        <AssetsPopover open={assetsOpen} onClose={() => setAssetsOpen(false)} />
         <button
           className="gm-btn"
-          onClick={() => setAssetsOpen((v) => !v)}
+          onClick={() => setAssetsDrawer(assetsDrawer ? null : 'add')}
           disabled={uploading}
-          style={buttonSecondary({ disabled: uploading, active: assetsOpen })}
+          style={buttonSecondary({ disabled: uploading, active: assetsDrawer === 'add' })}
           title="add an image — upload, your assets, or presets"
         >
           <IconUpload size={14} />
@@ -834,10 +841,6 @@ export function CommandBar() {
       style={{
         ...barShell,
         padding: BAR_PADDING,
-        // Same clipping trap as the idle bar (user-reported invisible
-        // popover): the reference-assets popover renders ABOVE this shell,
-        // so unclip while it's open; overflow:hidden otherwise (tray slide).
-        overflow: refAssetsOpen ? 'visible' : 'hidden',
       }}
       className="gm-bar"
     >
@@ -1030,17 +1033,12 @@ export function CommandBar() {
                     <button
                       className="gm-btn"
                       aria-label="reference from assets"
-                      onClick={() => setRefAssetsOpen((v) => !v)}
+                      onClick={() => setAssetsDrawer(assetsDrawer === 'attach' ? null : 'attach')}
                       title="attach a reference from your assets or presets"
-                      style={buttonSecondary({ active: refAssetsOpen, quiet: true })}
+                      style={buttonSecondary({ active: assetsDrawer === 'attach', quiet: true })}
                     >
                       assets <IconChevronDown size={11} />
                     </button>
-                    <AssetsPopover
-                      open={refAssetsOpen}
-                      onClose={() => setRefAssetsOpen(false)}
-                      onPlaced={(id) => setRefId(id)}
-                    />
                   </>
                 )}
                 <button
