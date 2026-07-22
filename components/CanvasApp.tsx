@@ -115,12 +115,29 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
   // listener (scoped to the mounted Crop/RegionOverlay, which also clears
   // the in-progress rect); both may fire on the same keypress and both end
   // up disarming — redundant but idempotent, not a double-disarm.
+  //
+  // Task 18: inserted a new intermediate tier for the unified Edit's region
+  // mode, BEFORE the generic armedTool-disarm tier — while Edit is armed
+  // with "Select region" on, the first Esc only turns regionMode off (back
+  // to whole-image edit, tray stays armed); a second Esc (regionMode now
+  // false) falls through to the generic tier and disarms the tray. This is
+  // the "region-drag Esc clears region first, then tray" layering from the
+  // brief. RegionOverlay's own use-drag-rect listener does the same
+  // regionMode-off (not armedTool-null) on the same keypress — redundant
+  // but idempotent, matching the pattern this comment already documented
+  // for Crop.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      const { pickingRef, setPickingRef, armedTool, setArmedTool } = useUiStore.getState()
+      const { pickingRef, setPickingRef, armedTool, setArmedTool, regionMode, setRegionMode, setCropFrac } =
+        useUiStore.getState()
       if (pickingRef) {
         setPickingRef(false)
+        return
+      }
+      if (armedTool === 'edit' && regionMode) {
+        setRegionMode(false)
+        setCropFrac(null)
         return
       }
       if (armedTool) {
@@ -206,9 +223,12 @@ function EmptyHint() {
 // specifically so that CSS file's collision-avoidance media queries can
 // override `bottom`/`left` per breakpoint. See that file for the current
 // mirrored collision math against CommandBar's centered bar and the
-// re-derived <=1020px lift constant (the tallest tray, armed 'inpaint',
-// grew with Task 15D's new source-thumbnail row — the lift was re-measured,
-// not reused from the pre-15D value).
+// re-derived <=1020px lift constant (Task 18: the tallest tray is now the
+// unified Edit tray with "Select region" on AND a rect drawn — Inpaint no
+// longer exists as its own armed tool — re-measured at 317px, taller than
+// Task 15D's armed-'inpaint' 292px because of the new "region locked"
+// badge line; the lift was re-derived from fresh measurements, not assumed
+// unchanged).
 //
 // Fix round 1 (review finding — layout collision, historical): this cluster
 // and CommandBar's centered bar (up to 720px wide, same bottom row) can

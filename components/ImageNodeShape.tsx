@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import {
   HTMLContainer,
   Rectangle2d,
@@ -50,6 +51,56 @@ declare module 'tldraw' {
 
 export type ImageNodeShape = TLBaseShape<'image-node', VersionNodeProps>
 export const IMAGE_NODE_W = 240
+
+// Task 18 pending-node ticker: client-safe id -> label map, mirroring
+// CommandBar.tsx's EDIT_MODELS/GENERATE_MODELS (which mirror
+// lib/fal-registry.ts's VISIBLE model entries — that registry file is
+// `server-only` and can't be imported here) plus the hardcoded 'flux-fill'
+// id lib/run-op.ts's runEdit always dispatches for a region-fill op. Keep
+// in sync with the registry the same way those two lists already are.
+const MODEL_LABELS: Record<string, string> = {
+  'nano-banana': 'Nano Banana',
+  'gpt-image-2': 'GPT Image 2',
+  'seedream-5-lite': 'Seedream 5 Lite',
+  'flux-1.1-pro': 'FLUX 1.1',
+  'flux-fill': 'FLUX Fill',
+}
+
+function formatElapsed(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// PENDING-NODE PATIENCE UX (Task 18, folded from a 16b follow-up): with
+// models now up to ~4min (gpt-image-2), a bare spinner reads as broken.
+// Local-state-only ticker (no store write — never triggers save-sync.ts's
+// autosave) that (re)starts a 1s setInterval whenever `pending` flips to
+// true and tears it down on unmount or the next status change (effect
+// cleanup runs on every dep change, including pending->false). Anchored to
+// Date.now() at the moment `pending` becomes true rather than to the node's
+// createdAt, so a retry (run-op.ts's retryShape resets status but NOT
+// createdAt) restarts the count from 0 instead of showing an inflated
+// carry-over from the earlier failed attempt.
+function usePendingElapsedSeconds(pending: boolean): number {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!pending) return
+    const start = Date.now()
+    // Matches CommandBar.tsx's existing convention for an intentional
+    // setState-in-effect (its resize-form-seed and pick-flow effects): this
+    // resets the ticker to 0 at the start of each new pending episode
+    // (initial mount while pending, or a status flip back to pending via
+    // retryShape), not on every render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setElapsed(0)
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [pending])
+  return elapsed
+}
 
 function AssetView({ props }: { props: VersionNodeProps }) {
   // seam for video: branch on props.kind here later
@@ -180,9 +231,14 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
     () => editor.getSelectedShapeIds().includes(shape.id),
     [editor, shape.id]
   )
+  const regionMode = useUiStore((s) => s.regionMode)
   const showCropOverlay = isSelected && armedTool === 'crop' && p.status === 'done'
-  const showRegionOverlay = isSelected && armedTool === 'inpaint' && p.status === 'done'
+  // Task 18: was `armedTool === 'inpaint'` (the old standalone verb) — now
+  // Edit's own "Select region" toggle (ui-store's `regionMode`) gates it,
+  // since Inpaint no longer exists as a separate armed tool.
+  const showRegionOverlay = isSelected && armedTool === 'edit' && regionMode && p.status === 'done'
   const pickingRef = useUiStore((s) => s.pickingRef)
+  const pendingElapsed = usePendingElapsedSeconds(p.status === 'pending')
   // Reference pick mode (Task 12): a node is a valid pick target while
   // Inspector's "+ Reference" flow is armed if it's done and isn't the node
   // currently selected (that's always the edit target itself — see
@@ -234,13 +290,22 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         {p.status === 'pending' && (
           <div
             style={{
-              display: 'grid',
-              placeItems: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
               height: '100%',
               color: color.accent,
+              gap: 6,
             }}
           >
             <IconSpinner size={18} />
+            {/* Task 18 patience UX: model + live "M:SS" ticker so a
+                slow model (gpt-image-2, up to ~4min) doesn't read as a
+                hung/broken spinner. */}
+            <span style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
+              {('model' in p.op && MODEL_LABELS[p.op.model]) || 'model'} · {formatElapsed(pendingElapsed)}
+            </span>
           </div>
         )}
         {p.status === 'error' && (

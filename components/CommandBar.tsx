@@ -111,10 +111,13 @@ const GENERATE_MODELS = [
 // bottom row (ActionMenu.tsx's VERBS list). Task 15D (user decision
 // 2026-07-21): '✦ Vary' removed outright — it fired an immediate no-form
 // edit op with no tray of its own, and the user asked for the verb gone
-// entirely rather than hidden/disabled.
+// entirely rather than hidden/disabled. Task 18 (user decision 2026-07-21,
+// supersedes CLAUDE.md's earlier same-day "Edit and Inpaint stay SEPARATE"
+// note): '✦ Inpaint' removed the same way — it's now the armed Edit tray's
+// "Select region" toggle (see armedTool === 'edit' branch below), not its
+// own verb.
 const VERBS = [
   ['edit', '✦ Edit'],
-  ['inpaint', '✦ Inpaint'],
   ['crop', 'Crop'],
   ['resize', 'Resize'],
 ] as const
@@ -262,7 +265,8 @@ function TrayThumb({
 
 export function CommandBar() {
   const editor = useEditor()
-  const { armedTool, setArmedTool, cropFrac, setCropFrac, pickingRef, setPickingRef } = useUiStore()
+  const { armedTool, setArmedTool, cropFrac, setCropFrac, pickingRef, setPickingRef, regionMode, setRegionMode } =
+    useUiStore()
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<string>(EDIT_MODELS[0].id)
   const [variants, setVariants] = useState(1)
@@ -335,24 +339,37 @@ export function CommandBar() {
       setCropFrac(null)
       setRefId(null)
       setEditingName(false)
+      // Task 18 addition: a stale "Select region" toggle must not survive
+      // onto a newly-selected node — armedTool itself isn't reset by this
+      // effect (selecting a different node while Edit stays armed is
+      // existing, intended behavior), so without this the region overlay
+      // could stay armed against the new selection with no drawn rect.
+      setRegionMode(false)
     }
     prevSelIdRef.current = selId
-  }, [selId, pickingRef, sel, editor, setCropFrac, setPickingRef])
+  }, [selId, pickingRef, sel, editor, setCropFrac, setPickingRef, setRegionMode])
 
   // [PORTED VERBATIM from Inspector.tsx] Clear the drawn region rect and any
   // in-progress prompt on EVERY armedTool change (tracked via a ref so
   // re-renders that leave armedTool unchanged don't wipe mid-typing state).
   // crop and inpaint both draw into the same `cropFrac` field; prompt is
   // local state shared across Edit/Inpaint forms.
+  // Task 18 addition: also clear `regionMode` on every armedTool change —
+  // otherwise leaving the Edit tray with "Select region" on and re-arming
+  // Edit later (or arming crop/resize in between) would silently re-arm
+  // RegionOverlay too, since ImageNodeShape.tsx's render gate is
+  // `armedTool === 'edit' && regionMode` and regionMode is store state that
+  // outlives any single armedTool value on its own.
   const prevArmedToolRef = useRef(armedTool)
   useEffect(() => {
     if (armedTool !== prevArmedToolRef.current) {
       setCropFrac(null)
       setPrompt('')
       setRefId(null)
+      setRegionMode(false)
     }
     prevArmedToolRef.current = armedTool
-  }, [armedTool, setCropFrac])
+  }, [armedTool, setCropFrac, setRegionMode])
 
   // [PORTED VERBATIM from Inspector.tsx] Resize form seeds from the shape's
   // natural size each time it's (re-)armed for this selection, but not on
@@ -478,7 +495,14 @@ export function CommandBar() {
   const op = p.op
   const opModel = 'model' in op ? op.model : undefined
   const opPrompt = 'prompt' in op ? op.prompt : undefined
-  const gatedTools = new Set(['crop', 'resize', 'inpaint']) // ActionMenu.tsx's gating, unchanged
+  const gatedTools = new Set(['crop', 'resize']) // ActionMenu.tsx's gating, unchanged (Task 18: 'inpaint' dropped — no longer its own verb)
+
+  // Task 18: "region active" — the Edit tray's "Select region" toggle is on
+  // AND a real (non-trivial) rect has actually been drawn. Drives the run
+  // routing (edit vs. inpaint op), the model-select/+Reference locks, and
+  // the "region locked" badge — all from this one boolean so they can never
+  // disagree with each other or with what Run is about to dispatch.
+  const regionActive = regionMode && !!cropFrac && !cropTooSmall(cropFrac, p.naturalW, p.naturalH)
 
   // [PORTED VERBATIM from Inspector.tsx handlers]
 
@@ -525,20 +549,45 @@ export function CommandBar() {
 
   const refNode = refId ? editor.getShape(refId) : undefined
 
+  // Task 18: unified Run — routes by whether a region is active (see
+  // `regionActive` above), UNCHANGED schema/dispatch either way (run-op.ts's
+  // runOp/dispatch and lib/fal-registry.ts's flux-fill default are exactly
+  // what the old standalone runInpaint dispatched).
   const runEdit = () => {
     if (!prompt.trim()) return
-    runOp(
-      editor,
-      sel.id,
-      { type: 'edit', prompt, model, referenceNodeId: refId ?? undefined },
-      variants,
-      resolveRef,
-      refId ?? undefined
-    )
+    if (regionActive) {
+      const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
+      runOp(editor, sel.id, { type: 'inpaint', prompt, model: 'flux-fill', rect }, variants)
+    } else {
+      runOp(
+        editor,
+        sel.id,
+        { type: 'edit', prompt, model, referenceNodeId: refId ?? undefined },
+        variants,
+        resolveRef,
+        refId ?? undefined
+      )
+    }
     setArmedTool(null)
     setPrompt('')
     setVariants(1)
     setRefId(null)
+    setCropFrac(null)
+    setRegionMode(false)
+  }
+
+  // Task 18: toggles the "Select region" mode. Turning it ON clears any
+  // attached reference (regions and references are mutually exclusive per
+  // the brief's locks — this covers the case where a ref was attached
+  // BEFORE the toggle, not just after). Turning it OFF (or re-toggling)
+  // also clears any drawn rect, matching "clearing region restores both"
+  // (model picker + reference button re-enable once regionActive goes
+  // false).
+  const toggleRegion = () => {
+    const next = !regionMode
+    setRegionMode(next)
+    setCropFrac(null)
+    if (next) setRefId(null)
   }
 
   const pickPreset = (name: string, ratio: number | null) => {
@@ -553,16 +602,6 @@ export function CommandBar() {
     void runInstantOp(editor, sel.id, { type: 'crop', rect })
     setArmedTool(null)
     setCropFrac(null)
-  }
-
-  const runInpaint = () => {
-    if (cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim()) return
-    const rect = fracToNaturalRect(cropFrac!, p.naturalW, p.naturalH)
-    runOp(editor, sel.id, { type: 'inpaint', prompt, model: 'flux-fill', rect }, variants)
-    setArmedTool(null)
-    setCropFrac(null)
-    setPrompt('')
-    setVariants(1)
   }
 
   const applyResize = () => {
@@ -580,13 +619,11 @@ export function CommandBar() {
   const trayHeader =
     armedTool === 'edit'
       ? `✦ Edit v${p.seq} — creates children of v${p.seq}`
-      : armedTool === 'inpaint'
-        ? `✦ Inpaint v${p.seq} — creates children of v${p.seq}`
-        : armedTool === 'crop'
-          ? `Crop v${p.seq} — instant`
-          : armedTool === 'resize'
-            ? `Resize v${p.seq} — instant`
-            : null
+      : armedTool === 'crop'
+        ? `Crop v${p.seq} — instant`
+        : armedTool === 'resize'
+          ? `Resize v${p.seq} — instant`
+          : null
 
   const verbRow = (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -670,10 +707,10 @@ export function CommandBar() {
               marginBottom: 8,
             }}
           >
-            {(armedTool === 'edit' || armedTool === 'inpaint') && (
+            {armedTool === 'edit' && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <TrayThumb src={p.status === 'done' ? p.assetUrl : undefined} label="editing" />
-                {armedTool === 'edit' && refId && (
+                {refId && (
                   <TrayThumb
                     src={refNode && refNode.type === 'image-node' ? refNode.props.assetUrl : undefined}
                     label="style ref"
@@ -688,22 +725,46 @@ export function CommandBar() {
 
           {armedTool === 'edit' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* Task 18: absorbs the old standalone Inpaint tray — this
+                  drag hint only shows once "Select region" is on, mirroring
+                  the old inpaint tray's always-shown hint (which had no
+                  toggle to gate it on). */}
+              {regionMode && (
+                <div style={{ color: color.textSecondary }}>drag on the image to mark the region to replace</div>
+              )}
+              {regionActive && (
+                <div className="gm-region-badge">region locked — pixels outside can&apos;t change</div>
+              )}
               <textarea
                 className="gm-input"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="describe the change…"
+                placeholder={regionMode ? 'describe what appears in the region…' : 'describe the change…'}
                 rows={2}
                 style={{ ...textareaField({ large: true }), resize: 'vertical' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
-                  {EDIT_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                {/* Task 18 region-active lock: model is forced to the
+                    'flux-fill' default (same id runEdit dispatches) — shown
+                    as a disabled, non-selectable field rather than the live
+                    picker so it can't be typo'd into disagreeing with what
+                    Run actually sends. */}
+                {regionActive ? (
+                  <span
+                    title="model locked to FLUX Fill while a region is set"
+                    style={{ ...field, display: 'inline-flex', alignItems: 'center', color: color.textDisabled, cursor: 'not-allowed' }}
+                  >
+                    FLUX Fill (region)
+                  </span>
+                ) : (
+                  <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
+                    {EDIT_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <span style={{ color: color.textSecondary }}>variants:</span>
                 <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
                   −
@@ -711,6 +772,18 @@ export function CommandBar() {
                 <span>{variants}</span>
                 <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
                   +
+                </button>
+                <button
+                  className="gm-btn"
+                  onClick={toggleRegion}
+                  title={
+                    regionMode
+                      ? 'back to whole-image edit'
+                      : 'draw a rect region — pixels outside it are guaranteed untouched'
+                  }
+                  style={buttonSecondary({ active: regionMode, quiet: true })}
+                >
+                  Select region
                 </button>
                 {/* Task 15D: the ref chip ("ref: v{seq}" + separate detach
                     button) that used to render here when refId was set is
@@ -720,22 +793,37 @@ export function CommandBar() {
                     thumbnail itself). This button stays exactly as before,
                     just newly gated on `!refId` since there's nothing left
                     for it to do once a ref is attached (re-picking means
-                    detach-then-"+ Reference" again, unchanged UX). */}
+                    detach-then-"+ Reference" again, unchanged UX). Task 18:
+                    also disabled while a region is active — references
+                    aren't supported for region fills. */}
                 {!refId && (
                   <button
                     className="gm-btn"
                     onClick={startPick}
+                    disabled={regionActive}
                     title={
-                      pickingRef
-                        ? 'click a done node on the canvas to attach it as a reference'
-                        : 'attach another node as a reference image'
+                      regionActive
+                        ? "style reference isn't supported for region fills"
+                        : pickingRef
+                          ? 'click a done node on the canvas to attach it as a reference'
+                          : 'attach another node as a reference image'
                     }
-                    style={buttonSecondary({ active: pickingRef, quiet: true })}
+                    style={buttonSecondary({ active: pickingRef, disabled: regionActive, quiet: true })}
                   >
                     {pickingRef ? 'Pick a node…' : '+ Reference'}
                   </button>
                 )}
-                <button className="gm-btn" onClick={runEdit} style={{ ...primaryBtn, marginLeft: 'auto' }}>
+                <button
+                  className="gm-btn"
+                  onClick={runEdit}
+                  disabled={!prompt.trim() || (regionMode && cropTooSmall(cropFrac, p.naturalW, p.naturalH))}
+                  style={{
+                    ...buttonPrimary({
+                      disabled: !prompt.trim() || (regionMode && cropTooSmall(cropFrac, p.naturalW, p.naturalH)),
+                    }),
+                    marginLeft: 'auto',
+                  }}
+                >
                   Run
                 </button>
               </div>
@@ -763,41 +851,6 @@ export function CommandBar() {
                   style={{ ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) }), marginLeft: 'auto' }}
                 >
                   Apply — instant
-                </button>
-              </div>
-            </div>
-          )}
-
-          {armedTool === 'inpaint' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ color: color.textSecondary }}>drag on the image to mark the region to replace</div>
-              <textarea
-                className="gm-input"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="describe what appears in the region…"
-                rows={2}
-                style={{ ...textareaField({ large: true }), resize: 'vertical' }}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: color.textSecondary }}>variants:</span>
-                <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
-                  −
-                </button>
-                <span>{variants}</span>
-                <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
-                  +
-                </button>
-                <button
-                  className="gm-btn"
-                  onClick={runInpaint}
-                  disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim()}
-                  style={{
-                    ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) || !prompt.trim() }),
-                    marginLeft: 'auto',
-                  }}
-                >
-                  Run — inpaint
                 </button>
               </div>
             </div>

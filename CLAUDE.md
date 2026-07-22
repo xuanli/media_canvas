@@ -44,10 +44,18 @@ polishing what exists? If no — cut it or park it in "Later".
   upload+generate; selected = recipe + verb row; armed = tray slides up with
   the verb's controls. Upload-as-root-node is back in scope via the bar.
   Mockups: docs/design/ux-directions.html §v2-chrome.
-- **Verb taxonomy (user decision 2026-07-21)**: Edit and Inpaint stay SEPARATE
+- **Verb taxonomy (Task 18, user decision 2026-07-21, SUPERSEDES the earlier
+  same-day "stay SEPARATE" decision below)**: Edit and Inpaint are UNIFIED
+  into one region-optional ✦ Edit verb — a "Select region" toggle in the
+  Edit tray arms rect-drawing; no region drawn → whole-image edit (model
+  picker, references allowed); a drawn region → dispatches the exact same
+  `{type:'inpaint', model:'flux-fill', rect}` op the old standalone Inpaint
+  verb always sent (op schema/dispatch unchanged), with the model picker
+  locked to "FLUX Fill (region)" and references disabled (not supported for
+  region fills) while a region is active. ~~Edit and Inpaint stay SEPARATE
   verbs (different contracts: model-discretion whole-image edit vs
-  mask-guaranteed region fill — both AI model calls); ✦ Vary REMOVED (it was
-  edit + canned prompt; servable by Edit directly).
+  mask-guaranteed region fill — both AI model calls)~~ (superseded). ✦ Vary
+  REMOVED (it was edit + canned prompt; servable by Edit directly).
 - **Toolset UX**: one flat action menu on the selected node (v1; verbs move
   into the command bar in v2 chrome); AI ops carry a ✦
   spark badge (model call, ~seconds, N variants), instant ops don't (free, live

@@ -160,26 +160,35 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
   .gm-zoom-plus { border-left: 1px solid rgba(255, 255, 255, 0.08) !important; }
 }
 @media (max-width: 1020px) {
-  /* Task 15D re-derivation, measured (not guessed) with an isolated
-     Playwright script sweeping the whole affected width range
-     (744/800/900/960/1000/1020 at an 800px-tall viewport, armed
-     'inpaint' — the tallest mood, now taller again with the source
-     thumbnail row): `.gm-bar`'s rendered height is a flat 292px across
-     that entire range (no wrap-driven growth at the narrower end), and its
-     OWN bottom offset is 44px for width<=960 (the watermark-clearance
-     override below is simultaneously active there — bar top measured at
-     y=464 on an 800px-tall viewport) vs. the unraised default 28px for
-     960<width<=1020 (bar top measured at y=480) — the <=960 sub-range is
-     the binding (higher/more demanding) case. Lift constant = tallest bar
-     height + bar's bottom offset in the binding sub-range + margin:
-     360 = 292 (measured .gm-bar height, armed 'inpaint') + 44 (measured
-     .gm-bar bottom offset, width<=960) + 24 margin. (Not reused from the
-     prior 244/276 — those assumed a 12px/44px bar bottom and a
-     thumbnail-less, unpadded-differently tray; this task changed both the
-     bar's own bottom offset and the tray's content, so the whole
-     derivation was redone against fresh measurements rather than adjusted
-     by inference.) */
-  .gm-zoom-cluster { bottom: 360px; }
+  /* Task 18 re-derivation (was 360px, Task 15D's armed-'inpaint' value —
+     Inpaint no longer exists as its own armed tool, absorbed into Edit's
+     "Select region" toggle, see CommandBar.tsx). Re-measured (not guessed,
+     not just inferred to be "the same since it mirrors the old tray") with
+     an isolated Playwright script sweeping the whole affected width range
+     (744/800/900/960/1000/1020 at an 800px-tall viewport). Two candidate
+     tallest states were measured for the new armed-Edit-with-region mood:
+     just toggling "Select region" on (no rect drawn yet) renders a flat
+     292px — the SAME number Task 15D measured for armed-'inpaint', which
+     first looked like "no change needed" — but actually DRAWING a region
+     rect (so the "region locked — pixels outside can't change" badge line
+     also renders, e2e/layout.spec.ts's armed-edit-with-region spec now
+     exercises this exact state) grows `.gm-bar` further to a flat 317px
+     across the same range, making THAT the true tallest/binding state (the
+     old standalone Inpaint tray never had a badge line, so this is a
+     genuinely new, taller high-water mark, not a coincidental match).
+     Bottom offset is unchanged from Task 15D's finding: 44px for width<=960
+     (watermark-clearance override below is simultaneously active there —
+     bar top measured at y=439 on an 800px-tall viewport) vs. the unraised
+     default 28px for 960<width<=1020 (bar top measured at y=455) — the
+     <=960 sub-range is still the binding (higher/more demanding) case.
+     Lift constant = tallest bar height + bar's bottom offset in the binding
+     sub-range + margin: 385 = 317 (measured .gm-bar height, armed Edit with
+     a drawn region) + 44 (measured .gm-bar bottom offset, width<=960) + 24
+     margin. (Not reused from the prior 360 — that was derived against a
+     tray state that turned out not to be this mood's true tallest one, so
+     the whole derivation was redone against fresh measurements rather than
+     assumed unchanged.) */
+  .gm-zoom-cluster { bottom: 385px; }
 }
 /* Design-critique item 1 (watermark), still active for the BAR: below
    ~920px viewport width the centered bar's own width formula
@@ -204,3 +213,21 @@ html, body { margin: 0; height: 100%; background: #14171c; color: #dfe5ec;
 .gm-thumb-wrap:hover .gm-thumb-detach,
 .gm-thumb-wrap:focus-within .gm-thumb-detach { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .gm-thumb-detach { transition: none; } }
+
+/* Task 18: unified Edit's "region locked" badge — shown in the armed Edit
+   tray once a real region rect is drawn (CommandBar.tsx's `regionActive`).
+   Teal-tinted (accent family, same #2dd4bf as the rest of the token-driven
+   chrome) rather than a warning color: a locked region is the FEATURE
+   working as intended (rect-region inpainting guarantees pixels outside
+   stay untouched — CLAUDE.md's pain-point #1), not an error state. */
+.gm-region-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(45, 212, 191, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  color: #2dd4bf;
+  font-size: 11px;
+}

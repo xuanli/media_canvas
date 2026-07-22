@@ -3,27 +3,39 @@
 import { useUiStore } from '@/lib/ui-store'
 import { useDragRect } from '@/components/overlays/use-drag-rect'
 
-// Draws over the AssetView inside a selected, inpaint-armed ImageNodeShape.
-// Same pointer/fraction-of-measured-box pattern as CropOverlay (see its
-// leading comment + task-10-report.md "Fix round 1") via the shared
-// `useDragRect` hook — only the marquee's visual style differs: a dashed
-// teal outline (vs. crop's solid) to read as "region to replace", not "crop
-// to these bounds".
+// Draws over the AssetView inside a selected ImageNodeShape while Edit is
+// armed AND its "Select region" toggle is on (Task 18: absorbed the old
+// standalone Inpaint verb — see ImageNodeShape.tsx's `showRegionOverlay`
+// render gate, now `armedTool === 'edit' && regionMode` instead of
+// `armedTool === 'inpaint'`). Same pointer/fraction-of-measured-box pattern
+// as CropOverlay (see its leading comment + task-10-report.md "Fix round
+// 1") via the shared `useDragRect` hook — only the marquee's visual style
+// differs: a dashed teal outline (vs. crop's solid) to read as "region to
+// replace", not "crop to these bounds".
 //
 // Storage: reuses ui-store's `cropFrac` field rather than adding a parallel
-// `regionFrac`. Only one region-drawing tool (crop XOR inpaint) is ever
-// armed at a time (ActionMenu's verbs are mutually exclusive and Inspector
-// clears the rect on every armedTool change — see Inspector.tsx), so the
+// `regionFrac`. Only one region-drawing tool (crop XOR edit-with-region) is
+// ever armed at a time (CommandBar's verbs are mutually exclusive and
+// clears the rect on every armedTool change — see CommandBar.tsx), so the
 // field is never read by two consumers simultaneously; a second field would
 // just be a rename with no behavioral difference. See ui-store.ts for the
 // field's updated doc comment.
+//
+// Esc handling (Task 18): on Escape this only turns `regionMode` off (NOT
+// `setArmedTool(null)`) — CanvasApp.tsx's global Esc listener owns the
+// "clear region first, then disarm the tray on a second press" layering by
+// checking `armedTool === 'edit' && regionMode` as its own intermediate
+// tier before the generic armedTool-disarm tier. This listener firing too
+// (idempotently clearing the same regionMode/cropFrac) on the same keypress
+// is the same "redundant but idempotent, not a double-disarm" pattern
+// CanvasApp.tsx's comment already documents for CropOverlay.
 export function RegionOverlay() {
   const cropFrac = useUiStore((s) => s.cropFrac)
   const setCropFrac = useUiStore((s) => s.setCropFrac)
-  const setArmedTool = useUiStore((s) => s.setArmedTool)
+  const setRegionMode = useUiStore((s) => s.setRegionMode)
   const { containerRef, onPointerDown, onPointerMove, onPointerUp } = useDragRect(
     setCropFrac,
-    () => setArmedTool(null)
+    () => setRegionMode(false)
   )
 
   const box = cropFrac

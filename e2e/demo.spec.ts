@@ -188,6 +188,60 @@ test('crop drag creates an instant child without panning the canvas', async ({ p
   expect(badCanvasResponses(canvasResponses)).toEqual([])
 })
 
+// Task 18: unified Edit's region-optional path — arm ✦ Edit, toggle "Select
+// region" (arms RegionOverlay, which reuses the exact same real
+// pointer-drag mechanics as CropOverlay via the shared use-drag-rect.ts
+// hook — see the crop-drag spec above for why real mouse events are used
+// instead of a synthetic ui-store fill), drag a rect, fill the
+// region-specific prompt, Run. Run routes this to the SAME
+// {type:'inpaint', model:'flux-fill', rect} op the old standalone Inpaint
+// verb always dispatched (run-op.ts's dispatch/schema UNCHANGED by this
+// task) — asserted via the resulting child's 'v2 · inpaint' label and the
+// arrow's 'inpaint' text label, mirroring how the plain-edit spec above
+// asserts 'v2 · edit'. Also exercises the region-active locks (model
+// picker replaced by a disabled "FLUX Fill (region)" field, "+ Reference"
+// gone since none was attached) and the "region locked" badge.
+test('edit tray region toggle: drag draws a region, Run dispatches inpaint', async ({ page }) => {
+  const { errors, canvasResponses } = await newCanvas(page)
+  await page.getByPlaceholder('Describe a new image…').fill('a cozy cafe')
+  await page.keyboard.press('Enter')
+  await expect(mockImg(page)).toHaveCount(1, { timeout: 10_000 })
+
+  const node = mockImg(page).first()
+  await clickNode(node)
+  await page.getByRole('button', { name: '✦ Edit' }).click()
+  await expect(page.getByPlaceholder(/describe the change/i)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Select region' }).click()
+  await expect(page.getByPlaceholder(/describe what appears in the region/i)).toBeVisible()
+
+  const box = await node.boundingBox()
+  if (!box) throw new Error('node has no bounding box')
+  const startX = box.x + box.width * 0.2
+  const startY = box.y + box.height * 0.2
+  const endX = box.x + box.width * 0.8
+  const endY = box.y + box.height * 0.8
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX + 10, startY + 10)
+  await page.mouse.move(endX, endY, { steps: 5 })
+  await page.mouse.up()
+
+  // Region-active locks + badge (brief: "Drawn region -> show badge").
+  await expect(page.getByText(/region locked — pixels outside can.t change/i)).toBeVisible()
+  await expect(page.getByText('FLUX Fill (region)')).toBeVisible()
+
+  await page.getByPlaceholder(/describe what appears in the region/i).fill('a small dog')
+  await page.getByRole('button', { name: /^run$/i }).click()
+
+  await expect(mockImg(page)).toHaveCount(2, { timeout: 10_000 })
+  await expect(page.getByText(/v2 · inpaint/)).toBeVisible()
+  await expect(page.getByText('inpaint', { exact: true }).last()).toBeVisible()
+
+  expect(errors).toEqual([])
+  expect(badCanvasResponses(canvasResponses)).toEqual([])
+})
+
 // Reference-pick flow (Task 12): select A, arm Edit, "+ Reference", click B
 // (a different done node) on the canvas, expect a "style ref" thumbnail
 // (Task 15D — replaces the old text-only "ref: vN" chip, same detach

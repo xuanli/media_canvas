@@ -8,7 +8,16 @@ import type { RectFrac } from '@/lib/types'
 // dispatched `{ type: 'edit', ... }` — there was never a distinct 'vary' op
 // type on the node's own props), so no persisted data references this
 // union member and nothing needs a migration.
-type Tool = null | 'edit' | 'inpaint' | 'crop' | 'resize'
+//
+// Task 18 (user decision 2026-07-21, supersedes CLAUDE.md's earlier
+// same-day "Edit and Inpaint stay SEPARATE" note): 'inpaint' removed from
+// this union the same way 'vary' was — it's now a region-optional mode of
+// 'edit' (see the new `regionMode` field below), not its own armed tool.
+// Every node previously created via the Inpaint verb still stores a plain
+// `{ type: 'inpaint', ... }` op (run-op.ts's dispatch/schema are UNCHANGED
+// by this task — only the CommandBar UI that arms the region-fill path
+// moved), so no persisted data references this union member either.
+type Tool = null | 'edit' | 'crop' | 'resize'
 
 // v2 chrome (Task 14): mirrors save-sync.ts's title-bar dirty/error signal
 // as ui-store state so TopNav's save dot can render it reactively instead of
@@ -32,9 +41,18 @@ interface UiState {
   // tool is ever armed at a time (see RegionOverlay.tsx's comment) and the
   // rename would be pure churn.
   cropFrac: RectFrac | null
+  // Task 18: whether the armed Edit tool's "Select region" toggle is on.
+  // Off (default) → whole-image edit (refs allowed, model picker enabled).
+  // On → arms RegionOverlay for drawing into `cropFrac`; a real drawn rect
+  // routes Run to the {type:'inpaint', model:'flux-fill', rect} op instead
+  // of {type:'edit', ...} — see CommandBar.tsx's runEdit. Lives in the
+  // store (not CommandBar-local state) because ImageNodeShape.tsx's render
+  // gate for RegionOverlay needs it too.
+  regionMode: boolean
   setArmedTool: (t: Tool) => void
   setPickingRef: (v: boolean) => void
   setCropFrac: (r: RectFrac | null) => void
+  setRegionMode: (v: boolean) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -42,8 +60,10 @@ export const useUiStore = create<UiState>((set) => ({
   pickingRef: false,
   saveState: 'saved',
   cropFrac: null,
+  regionMode: false,
   setArmedTool: (armedTool) => set({ armedTool }),
   setPickingRef: (pickingRef) => set({ pickingRef }),
   setSaveState: (saveState) => set({ saveState }),
   setCropFrac: (cropFrac) => set({ cropFrac }),
+  setRegionMode: (regionMode) => set({ regionMode }),
 }))
