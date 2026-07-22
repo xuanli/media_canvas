@@ -279,7 +279,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   // and again whenever canvasName or the reactive rootPrompt resolve to a
   // better label — exactly "refresh on mount and on rename" per the brief.
   useEffect(() => {
-    const label = canvasName && canvasName.trim() ? canvasName : (rootPrompt ?? canvasId)
+    const label = canvasName && canvasName.trim() ? canvasName : (rootPrompt ?? 'untitled canvas')
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecent(upsertRecent(canvasId, label.slice(0, 40)))
   }, [canvasId, rootPrompt, canvasName])
@@ -507,7 +507,10 @@ export function TopNav({ canvasId }: { canvasId: string }) {
         <button
           className="gm-icon-btn"
           style={navIconBtn}
-          onClick={() => setSwitcherOpen((v) => !v)}
+          onClick={() => {
+            setSwitcherOpen((v) => !v)
+            setExportOpen(false)
+          }}
           title="recent canvases"
           aria-label="recent canvases"
         >
@@ -593,7 +596,10 @@ export function TopNav({ canvasId }: { canvasId: string }) {
           carry a 14px icon (was: only the PNG row had one, at 12px) —
           IconDownload/IconUpload/IconDownload, consistent sizing. */}
       <div style={{ position: 'relative' }} ref={exportWrapRef}>
-        <button className="gm-btn" style={navBtn} onClick={() => setExportOpen((v) => !v)}>
+        <button className="gm-btn" style={navBtn} onClick={() => {
+          setExportOpen((v) => !v)
+          setSwitcherOpen(false)
+        }}>
           File
           <IconChevronDown size={12} />
         </button>
