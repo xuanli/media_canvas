@@ -86,9 +86,25 @@ function fracToNaturalRect(f: RectFrac, naturalW: number, naturalH: number) {
   return { x, y, w, h }
 }
 
+// Mirrors lib/fal-registry.ts's `REGISTRY.edit.models` VISIBLE entries (i.e.
+// excluding any `hidden: true` entry) — Task 16b removed flux-kontext from
+// this list since 16a flagged it `hidden: true` in the registry (retired
+// from the picker, still registered/callable). Both lists must be updated
+// together when the registry's edit model set changes.
 const EDIT_MODELS = [
   { id: 'nano-banana', label: 'Nano Banana' },
-  { id: 'flux-kontext', label: 'FLUX Kontext' },
+  { id: 'gpt-image-2', label: 'GPT Image 2' },
+  { id: 'seedream-5-lite', label: 'Seedream 5 Lite' },
+] as const
+
+// Mirrors lib/fal-registry.ts's `REGISTRY.generate.models` — order/default
+// (nano-banana first) matches `REGISTRY.generate.default`. Both lists must
+// be updated together when the registry's generate model set changes.
+const GENERATE_MODELS = [
+  { id: 'nano-banana', label: 'Nano Banana' },
+  { id: 'gpt-image-2', label: 'GPT Image 2' },
+  { id: 'seedream-5-lite', label: 'Seedream 5 Lite' },
+  { id: 'flux-1.1-pro', label: 'FLUX 1.1' },
 ] as const
 
 // verbs shown in both the SELECTED calm bar and pinned to the ARMED tray's
@@ -261,6 +277,7 @@ export function CommandBar() {
   // or vice versa, matching PromptBar/Inspector having been separate
   // components with separate state before.
   const [genPrompt, setGenPrompt] = useState('')
+  const [genModel, setGenModel] = useState<string>(GENERATE_MODELS[0].id)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -359,7 +376,7 @@ export function CommandBar() {
 
   const go = () => {
     if (!genPrompt.trim()) return
-    runOp(editor, null, { type: 'generate', prompt: genPrompt, model: 'flux-1.1-pro' })
+    runOp(editor, null, { type: 'generate', prompt: genPrompt, model: genModel })
     setGenPrompt('')
   }
 
@@ -415,6 +432,23 @@ export function CommandBar() {
           placeholder="Describe a new image…"
           style={{ ...inputField({ large: true }), flex: 1 }}
         />
+        {/* Task 16b: idle-mood generate model picker — same styling (gm-input
+            class + inputField() token, no appearance-none/chevron override)
+            as the Edit tray's picker below, since that's the tray's actual
+            current pattern, a bare <select className="gm-input">. */}
+        <select
+          className="gm-input"
+          value={genModel}
+          onChange={(e) => setGenModel(e.target.value)}
+          style={field}
+          aria-label="generate model"
+        >
+          {GENERATE_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
         <button className="gm-btn" onClick={go} style={primaryBtn}>
           Generate
         </button>

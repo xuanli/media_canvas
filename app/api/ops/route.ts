@@ -4,7 +4,15 @@ import { REGISTRY } from '@/lib/fal-registry'
 import { normalizeFalError } from '@/lib/errors'
 import { checkPasscode } from '@/lib/server-auth'
 
-export const maxDuration = 120 // vercel function limit headroom over 90s timeout
+// Task 16b: raised from 120 to cover gpt-image-2's per-model 240_000ms
+// timeout (Task 16a measured ~123-161s live) with headroom, matching the
+// same "function limit > race timeout" margin the old 120/90s pair had.
+// VERIFY AT DEPLOY: Vercel's actual ceiling for this value depends on the
+// plan/runtime (e.g. Hobby serverless functions cap at 60s regardless of
+// this export, Pro/Enterprise or Fluid-enabled deployments can go higher) —
+// confirm the deployed plan actually honors 300s before relying on it in
+// production; this is a request, not a guarantee, on some plans.
+export const maxDuration = 300
 
 export async function POST(req: Request) {
   if (!checkPasscode(req)) return Response.json({ error: { code: 'unauthorized', message: 'Wrong passcode.' } }, { status: 401 })
@@ -26,9 +34,13 @@ export async function POST(req: Request) {
       maskUrl: 'maskUrl' in body ? body.maskUrl : undefined,
       referenceUrls: 'referenceUrls' in body ? body.referenceUrls : undefined,
     })
+    // Task 16b: per-model timeout override (falls back to the old 90s
+    // default) — see ModelEntry.timeoutMs's comment in fal-registry.ts for
+    // why gpt-image-2 needs a raised value.
+    const timeoutMs = entry.timeoutMs ?? 90_000
     const result = await Promise.race([
       fal.subscribe(entry.id, { input }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), 90_000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), timeoutMs)),
     ]) as { data: { images: Array<{ url: string; width?: number; height?: number }> } }
     const img = result.data.images[0]
     if (!img?.url) throw new Error('model returned no image')

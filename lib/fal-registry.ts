@@ -54,6 +54,12 @@ export interface ModelEntry {
   // to actually filter these out happens in a later task — this flag is
   // registry-only metadata until then.
   hidden?: true
+  // Task 16b: per-model override for /api/ops's Promise.race timeout (falls
+  // back to that route's 90_000 default when unset). Needed because
+  // gpt-image-2's measured live latency (Task 16a: ~123s t2i / ~161s edit at
+  // quality:"high") already exceeds the old fixed 90s — see the gpt-image-2
+  // entries below for the actual value + margin rationale.
+  timeoutMs?: number
   toParams: (p: {
     prompt: string
     imageUrl?: string
@@ -92,7 +98,17 @@ export const REGISTRY: Record<
       'gpt-image-2': {
         id: 'fal-ai/gpt-image-2',
         label: 'GPT Image 2',
-        toParams: ({ prompt }) => ({ prompt, image_size: 'landscape_16_9' }),
+        // Task 16b quality decision: Task 16a only measured the DEFAULT
+        // quality:"high" tier live (~123s t2i). It has no live-measured
+        // latency for quality:"medium"/"low", and fal's own docs don't
+        // publish a latency table either — so rather than guess at a
+        // "medium halves it" discount with no data behind it, this keeps
+        // "high" (set explicitly, not just relying on the implicit default,
+        // so the choice is visible here) and leans on the raised
+        // timeoutMs below instead. Revisit if a future pass gets a real
+        // measurement for "medium".
+        timeoutMs: 240_000, // measured ~123s w/ margin (see comment above)
+        toParams: ({ prompt }) => ({ prompt, image_size: 'landscape_16_9', quality: 'high' }),
       },
       'seedream-5-lite': {
         id: 'fal-ai/bytedance/seedream/v5/lite/text-to-image',
@@ -142,9 +158,14 @@ export const REGISTRY: Record<
       'gpt-image-2': {
         id: 'fal-ai/gpt-image-2/edit',
         label: 'GPT Image 2',
+        // Same quality decision as the generate entry above: "high" kept
+        // explicit (measured ~161s live), timeoutMs raised with margin
+        // rather than guessing at "medium"'s latency with no data.
+        timeoutMs: 240_000,
         toParams: ({ prompt, imageUrl, referenceUrls = [] }) => ({
           prompt,
           image_urls: [imageUrl, ...referenceUrls].filter(Boolean),
+          quality: 'high',
         }),
       },
       'seedream-5-lite': {
