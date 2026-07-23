@@ -75,7 +75,28 @@ export function RegionOverlay() {
             boxSizing: 'border-box',
             cursor: 'move',
           }}
-        />
+        >
+          {/* Corner handles (2026-07-22): visual affordance for the hook's
+              corner-resize hit zones; pointerEvents none — the container's
+              own handlers do the hit-testing. */}
+          {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => (
+            <div
+              key={corner}
+              style={{
+                position: 'absolute',
+                width: 8,
+                height: 8,
+                background: '#2dd4bf',
+                borderRadius: 2,
+                pointerEvents: 'none',
+                left: corner.includes('w') ? -4 : undefined,
+                right: corner.includes('e') ? -4 : undefined,
+                top: corner.includes('n') ? -4 : undefined,
+                bottom: corner.includes('s') ? -4 : undefined,
+              }}
+            />
+          ))}
+        </div>
       )}
     </div>
   )

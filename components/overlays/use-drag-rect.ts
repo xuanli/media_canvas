@@ -32,9 +32,14 @@ export interface DragRectHandlers {
 // to the 0..1 box); pointerdown anywhere else draws a fresh rect, as before.
 // `rectFrac` is passed in for the hit-test — both overlays already subscribe
 // to it for rendering, so this adds no new store coupling.
+// Round 3 (user 2026-07-22: "are the box resizable?" — they weren't):
+// pointerdown near a CORNER of the existing rect grabs that corner and
+// resizes against the opposite (anchor) corner; the overlays render small
+// corner handles for discoverability. Corner hit wins over inside-move.
 type DragState =
   | { mode: 'draw'; start: { x: number; y: number } }
   | { mode: 'move'; grab: { dx: number; dy: number }; size: { w: number; h: number } }
+  | { mode: 'resize'; anchor: { x: number; y: number } }
 
 export function useDragRect(
   rectFrac: RectFrac | null,
@@ -56,13 +61,31 @@ export function useDragRect(
     ;(e.target as Element).setPointerCapture(e.pointerId)
     const p = toFrac(e)
     const r = rectFrac
-    const insideRect = r && r.w > 0 && r.h > 0 && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
-    if (insideRect) {
-      drag.current = { mode: 'move', grab: { dx: p.x - r.x, dy: p.y - r.y }, size: { w: r.w, h: r.h } }
-    } else {
-      drag.current = { mode: 'draw', start: p }
-      setRectFrac({ x: p.x, y: p.y, w: 0, h: 0 })
+    if (r && r.w > 0 && r.h > 0) {
+      // Corner hit-test first (12px screen tolerance, converted to
+      // fractions of the measured box so it's zoom-consistent on screen).
+      const cr = containerRef.current!.getBoundingClientRect()
+      const tolX = 12 / cr.width
+      const tolY = 12 / cr.height
+      const corners = [
+        { c: { x: r.x, y: r.y }, anchor: { x: r.x + r.w, y: r.y + r.h } },
+        { c: { x: r.x + r.w, y: r.y }, anchor: { x: r.x, y: r.y + r.h } },
+        { c: { x: r.x, y: r.y + r.h }, anchor: { x: r.x + r.w, y: r.y } },
+        { c: { x: r.x + r.w, y: r.y + r.h }, anchor: { x: r.x, y: r.y } },
+      ]
+      const hit = corners.find(({ c }) => Math.abs(p.x - c.x) <= tolX && Math.abs(p.y - c.y) <= tolY)
+      if (hit) {
+        drag.current = { mode: 'resize', anchor: hit.anchor }
+        return
+      }
+      const insideRect = p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
+      if (insideRect) {
+        drag.current = { mode: 'move', grab: { dx: p.x - r.x, dy: p.y - r.y }, size: { w: r.w, h: r.h } }
+        return
+      }
     }
+    drag.current = { mode: 'draw', start: p }
+    setRectFrac({ x: p.x, y: p.y, w: 0, h: 0 })
   }
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -72,6 +95,8 @@ export function useDragRect(
     const p = toFrac(e)
     if (d.mode === 'draw') {
       setRectFrac(rectFrom(d.start, p))
+    } else if (d.mode === 'resize') {
+      setRectFrac(rectFrom(d.anchor, p))
     } else {
       // Clamp so the whole rect stays inside the image; toFrac already
       // clamps the pointer itself, this clamps the far edge too.

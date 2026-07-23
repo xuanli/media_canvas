@@ -468,12 +468,40 @@ export function CommandBar() {
   // [PORTED VERBATIM from Inspector.tsx] Resize form seeds from the shape's
   // natural size each time it's (re-)armed for this selection, but not on
   // every keystroke thereafter.
+  const resizeBaselineRef = useRef<{ dispW: number; naturalW: number; naturalH: number } | null>(null)
   useEffect(() => {
     if (armedTool !== 'resize' || !sel) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setWidth(sel.props.naturalW)
+     
     setHeight(sel.props.naturalH)
-  }, [armedTool, selId, sel])
+    // Canvas-drag sync baseline (user 2026-07-22): display width at arm
+    // time — dragging the node's tldraw handles while Resize is armed maps
+    // the display scale onto natural px in the effect below.
+    resizeBaselineRef.current = { dispW: sel.props.w, naturalW: sel.props.naturalW, naturalH: sel.props.naturalH }
+    // Seed on arm / selection change ONLY — `sel` deliberately out of deps:
+    // it updates on every shape change, and re-seeding mid-drag would fight
+    // the canvas-drag sync below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [armedTool, selId])
+
+  // Canvas-drag resize (user 2026-07-22: "resize can only take input"):
+  // while the Resize tray is armed, dragging the node's own (aspect-locked)
+  // resize handles live-updates the W/H fields — display-scale relative to
+  // the arm-time baseline, applied to the natural dimensions. Apply then
+  // commits whatever the fields say, same as typed input.
+  const selDispW = sel?.props.w
+  useEffect(() => {
+    if (armedTool !== 'resize' || !selDispW) return
+    const base = resizeBaselineRef.current
+    if (!base || base.dispW <= 0) return
+    const scale = selDispW / base.dispW
+    if (Math.abs(scale - 1) < 0.002) return
+     
+    setWidth(Math.max(1, Math.round(base.naturalW * scale)))
+     
+    setHeight(Math.max(1, Math.round(base.naturalH * scale)))
+  }, [armedTool, selDispW])
 
   // Camera restore for the region-tools zoom-to-node flow (zoomToNode, in
   // the SELECTED branch below, saves into this ref): as soon as NO
@@ -1165,7 +1193,7 @@ export function CommandBar() {
                   disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH)}
                   style={{ ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) }), marginLeft: 'auto' }}
                 >
-                  Apply — instant
+                  Apply
                 </button>
               </div>
             </div>
@@ -1173,6 +1201,7 @@ export function CommandBar() {
 
           {armedTool === 'resize' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ color: color.textSecondary }}>type a size, or drag the node&rsquo;s corners on the canvas</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: color.textSecondary, width: 14 }}>W</span>
                 <input
@@ -1193,7 +1222,7 @@ export function CommandBar() {
                   style={{ ...field, flex: 1 }}
                 />
                 <button className="gm-btn" onClick={applyResize} disabled={width < 1 || height < 1} style={buttonPrimary({ disabled: width < 1 || height < 1 })}>
-                  Apply — instant
+                  Apply
                 </button>
               </div>
             </div>
@@ -1242,7 +1271,7 @@ export function CommandBar() {
                   marginLeft: 'auto',
                 }}
               >
-                Apply — instant
+                Apply
               </button>
             </div>
           )}
@@ -1272,7 +1301,7 @@ export function CommandBar() {
               ))}
               <div style={{ display: 'flex' }}>
                 <button className="gm-btn" onClick={applyAdjust} style={{ ...buttonPrimary({}), marginLeft: 'auto' }}>
-                  Apply — instant
+                  Apply
                 </button>
               </div>
             </div>
@@ -1312,7 +1341,7 @@ export function CommandBar() {
                   disabled={cropTooSmall(cropFrac, p.naturalW, p.naturalH)}
                   style={{ ...buttonPrimary({ disabled: cropTooSmall(cropFrac, p.naturalW, p.naturalH) }), marginLeft: 'auto' }}
                 >
-                  Apply — instant
+                  Apply
                 </button>
               </div>
             </div>
