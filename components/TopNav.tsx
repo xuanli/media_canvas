@@ -40,6 +40,7 @@ import { color, metric, type as typeTok } from '@/lib/design'
 import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconUpload, IconX } from '@/components/icons'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { EXAMPLE_CANVAS } from '@/lib/example-canvas'
 
 const RECENT_KEY = 'gm-recent'
 const RECENT_CAP = 10
@@ -326,6 +327,11 @@ export function TopNav({ canvasId }: { canvasId: string }) {
   // and again whenever canvasName or the reactive rootPrompt resolve to a
   // better label — exactly "refresh on mount and on rename" per the brief.
   useEffect(() => {
+    // Never record the example MASTER in recents (user 2026-07-22, after the
+    // master was deleted from a recents entry): the fork-guard normally
+    // redirects before this mounts, but belt-and-braces so a stale
+    // deletable entry can never reappear.
+    if (canvasId === EXAMPLE_CANVAS.id) return
     const label = canvasName && canvasName.trim() ? canvasName : (rootPrompt ?? 'Untitled')
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecent(upsertRecent(canvasId, label.slice(0, 40)))

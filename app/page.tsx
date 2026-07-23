@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiPost, apiDelete, getPasscode } from '@/lib/api-client'
-import { EXAMPLE_CANVAS } from '@/lib/example-canvas'
+import { EXAMPLE_CANVAS, forkExampleCanvas } from '@/lib/example-canvas'
 import { color, metric, type as typeTok, buttonPrimary, inputField } from '@/lib/design'
 import { IconX } from '@/components/icons'
 import { MediaLabMark } from '@/components/TopNav'
@@ -74,8 +74,12 @@ export default function Home() {
   // mount effect. Runs once — this page isn't scoped to a single canvas, so
   // there's no id/rename dependency to react to like TopNav has.
   useEffect(() => {
+    // Drop any stale example-MASTER entry (user 2026-07-22): before the
+    // fork-guard existed, opening the master directly recorded it here as a
+    // deletable card — and deleting that card nuked the shared master. Never
+    // show it; the pinned launcher card is the only way in, and it forks.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRecent(loadRecent())
+    setRecent(loadRecent().filter((e) => e.id !== EXAMPLE_CANVAS.id))
   }, [])
 
   // Which action the passcode form should retry after unlock (the example
@@ -110,17 +114,7 @@ export default function Home() {
     setBusy(true)
     setError(null)
     try {
-      const snapRes = await fetch(`/api/canvas/${EXAMPLE_CANVAS.id}`, { cache: 'no-store' })
-      if (!snapRes.ok) throw new Error('The example canvas is unavailable right now.')
-      const snapshot = await snapRes.json()
-      const { id } = await apiPost<{ id: string }>('/api/canvas', {}, false)
-      const put = await fetch(`/api/canvas/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-gm-passcode': getPasscode() },
-        body: JSON.stringify(snapshot),
-      })
-      if (put.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 })
-      if (!put.ok) throw new Error('Could not copy the example canvas.')
+      const id = await forkExampleCanvas(getPasscode())
       router.push(`/c/${id}`)
     } catch (e) {
       const status = e && typeof e === 'object' && 'status' in e ? (e as { status?: unknown }).status : undefined
