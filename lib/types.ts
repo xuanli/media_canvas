@@ -58,6 +58,11 @@ export interface VersionNodeProps {
   durationMs?: number
   sourceId: string | null               // parent VERSION (never tldraw parentId)
   op: Operation
+  // Resumable generation (2026-07-22): fal queue request id, set the moment
+  // /api/ops returns from submit and cleared when the result/failure lands.
+  // A pending node with this set survives reloads — sweep-interrupted skips
+  // it and run-op's resumePendingOps re-attaches polling.
+  falRequestId?: string
   errorCode?: string; errorMessage?: string
   createdAt: number
 }

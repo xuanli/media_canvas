@@ -35,6 +35,7 @@ import { apiPost, apiDelete } from '@/lib/api-client'
 import { useUiStore } from '@/lib/ui-store'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { sweepInterruptedNodes } from '@/lib/sweep-interrupted'
+import { resumePendingOps } from '@/lib/run-op'
 import { color, metric, type as typeTok } from '@/lib/design'
 import { IconCheck, IconChevronDown, IconDownload, IconPlus, IconShare, IconUpload, IconX } from '@/components/icons'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -424,6 +425,7 @@ export function TopNav({ canvasId }: { canvasId: string }) {
       const snapshot = JSON.parse(await file.text())
       loadSnapshot(editor.store, snapshot)
       sweepInterruptedNodes(editor)
+      resumePendingOps(editor)
       setImportError(null)
     } catch {
       setImportError('Import failed: not a valid canvas file')

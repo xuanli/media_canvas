@@ -16,10 +16,18 @@ import type { ImageNodeShape } from '@/components/ImageNodeShape'
 // (to mount it) while TopNav imported this back from CanvasApp would be a
 // circular module dependency — hoisting it out to a leaf module avoids that
 // rather than relying on ESM circular-import semantics to save it.
+// Resumable generation (user 2026-07-22): pending nodes that carry a
+// falRequestId are NOT swept — the fal queue request outlives the page load
+// that submitted it, and CanvasApp calls run-op's resumePendingOps right
+// after this to re-attach polling. Only requestId-less pending nodes (the
+// tiny submit-in-flight window, or pre-feature snapshots) still error out.
 export function sweepInterruptedNodes(editor: Editor): void {
   const stuck = editor
     .getCurrentPageShapes()
-    .filter((s): s is ImageNodeShape => s.type === 'image-node' && s.props.status === 'pending')
+    .filter(
+      (s): s is ImageNodeShape =>
+        s.type === 'image-node' && s.props.status === 'pending' && !s.props.falRequestId
+    )
   if (stuck.length === 0) return
   editor.updateShapes<ImageNodeShape>(
     stuck.map((s) => ({

@@ -159,6 +159,9 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
     // non-string value still fails — safety over elegance, per the brief.
     name: T.string.optional(),
     durationMs: T.number.optional(),
+    // Resumable generation (2026-07-22) — optional so pre-feature snapshots
+    // load, same rationale as `name` above.
+    falRequestId: T.string.optional(),
     sourceId: T.string.nullable(),
     // zod validates ops at the API boundary; shape-level prop validation stays
     // shallow. This is the one documented any-adjacent exception (see brief).
@@ -197,6 +200,14 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
     const path = new Path2D()
     path.rect(0, 0, shape.props.w, shape.props.h)
     return path
+  }
+
+  // User 2026-07-22: canvas resize must preserve the image's aspect ratio —
+  // free-form stretching distorted the picture. tldraw's own resize logic
+  // honors this hook (ShapeUtil.isAspectRatioLocked, verified in the
+  // installed 5.2.5 types), constraining every handle drag proportionally.
+  override isAspectRatioLocked() {
+    return true
   }
 
   override onResize(shape: ImageNodeShape, info: TLResizeInfo<ImageNodeShape>) {

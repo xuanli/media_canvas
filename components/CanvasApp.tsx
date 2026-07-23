@@ -3,12 +3,13 @@
 import { Tldraw, loadSnapshot, useEditor, useValue, type Editor, type TLShapeId } from 'tldraw'
 import 'tldraw/tldraw.css'
 import { useCallback, useEffect, useRef } from 'react'
-import { ImageNodeUtil } from '@/components/ImageNodeShape'
+import { ImageNodeUtil, type ImageNodeShape } from '@/components/ImageNodeShape'
+import { layoutTree } from '@/lib/tree'
 import { TopNav } from '@/components/TopNav'
 import { CommandBar } from '@/components/CommandBar'
 import { AssetsDrawer } from '@/components/AssetsDrawer'
 import { PasscodeGate } from '@/components/PasscodeGate'
-import { createLocalImageRoot, createUploadedRoot, retryShape } from '@/lib/run-op'
+import { createLocalImageRoot, createUploadedRoot, resumePendingOps, retryShape } from '@/lib/run-op'
 import { rasterizeToPngDataUrl } from '@/components/AssetsDrawer'
 import { startSaveSync } from '@/lib/save-sync'
 import { useUiStore } from '@/lib/ui-store'
@@ -113,6 +114,10 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
             const snapshot = await res.json()
             loadSnapshot(editor.store, snapshot)
             sweepInterruptedNodes(editor)
+            // Resumable generation (user 2026-07-22): pending nodes that
+            // carry a fal queue request id survived the sweep — re-attach
+            // polling so their results land in THIS session.
+            resumePendingOps(editor)
           }
         } catch {
           // Network error: fall through and start empty, same as a 404.
@@ -442,6 +447,35 @@ function ZoomCluster() {
         }
       >
         <IconFit size={14} />
+      </button>
+      {/* Tidy (user 2026-07-22): re-lays out every image-node by its
+          provenance tree (lib/tree.ts layoutTree) — manual layout stops
+          scaling once a session produces dozens of nodes. Bound arrows
+          follow their shapes automatically; single undo entry restores the
+          hand-made layout. */}
+      <button
+        className="gm-icon-btn"
+        style={{ ...btnStyle, borderTop: `1px solid ${color.border}`, fontSize: 13 }}
+        aria-label="Tidy layout"
+        title="Tidy: auto-arrange nodes by version tree"
+        onClick={() => {
+          const ns = editor
+            .getCurrentPageShapes()
+            .filter((s): s is ImageNodeShape => s.type === 'image-node')
+          if (!ns.length) return
+          const posMap = layoutTree(
+            ns.map((s) => ({ id: s.id, w: s.props.w, h: s.props.h, sourceId: s.props.sourceId }))
+          )
+          editor.updateShapes(
+            ns.map((s) => {
+              const p = posMap.get(s.id)!
+              return { id: s.id, type: 'image-node' as const, x: p.x, y: p.y }
+            })
+          )
+          editor.zoomToFit({ animation: { duration: 220 } })
+        }}
+      >
+        ⌗
       </button>
     </div>
   )

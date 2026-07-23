@@ -15,3 +15,14 @@ export const opsRequestSchema = z.discriminatedUnion('capability', [
     imageUrl: url, maskUrl: url, referenceUrls: z.array(url).max(8).optional() }),
 ])
 export type OpsRequest = z.infer<typeof opsRequestSchema>
+
+// Resumable generation (user 2026-07-22): POST /api/ops/status polls a
+// fal queue request submitted by POST /api/ops. capability+model resolve
+// the registry entry server-side (fal's queue API needs the endpoint id for
+// status/result lookups) — the client never supplies a raw fal endpoint id.
+export const opsStatusSchema = z.object({
+  capability: z.enum(['generate', 'edit', 'inpaint']),
+  model: z.string(),
+  requestId: z.string().min(1).max(128),
+})
+export type OpsStatusRequest = z.infer<typeof opsStatusSchema>

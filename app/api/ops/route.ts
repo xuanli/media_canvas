@@ -34,17 +34,16 @@ export async function POST(req: Request) {
       maskUrl: 'maskUrl' in body ? body.maskUrl : undefined,
       referenceUrls: 'referenceUrls' in body ? body.referenceUrls : undefined,
     })
-    // Task 16b: per-model timeout override (falls back to the old 90s
-    // default) — see ModelEntry.timeoutMs's comment in fal-registry.ts for
-    // why gpt-image-2 needs a raised value.
-    const timeoutMs = entry.timeoutMs ?? 90_000
-    const result = await Promise.race([
-      fal.subscribe(entry.id, { input }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), timeoutMs)),
-    ]) as { data: { images: Array<{ url: string; width?: number; height?: number }> } }
-    const img = result.data.images[0]
-    if (!img?.url) throw new Error('model returned no image')
-    return Response.json({ imageUrl: img.url, width: img.width ?? 0, height: img.height ?? 0 })
+    // Resumable generation (user 2026-07-22): was `fal.subscribe` — a
+    // single long-lived HTTP round-trip pinned to the submitting browser
+    // tab, so a refresh/canvas-switch orphaned the run. Now queue-based:
+    // this handler ONLY submits (fast) and returns fal's request id; the
+    // client stores it on the pending node and polls /api/ops/status —
+    // which any later session can also do, making in-flight generations
+    // survive reloads. Per-model timeouts moved client-side (the poll
+    // deadline); maxDuration above is now irrelevant headroom.
+    const { request_id: requestId } = await fal.queue.submit(entry.id, { input })
+    return Response.json({ requestId })
   } catch (e) {
     const n = normalizeFalError(e)
     return Response.json({ error: { code: n.code, message: n.message } }, { status: n.http })

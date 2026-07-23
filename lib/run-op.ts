@@ -366,20 +366,107 @@ export function retryShape(
   void dispatch(editor, shapeId, s.props.op, parent?.props.assetUrl, resolveRef)
 }
 
-async function dispatch(
+// ── Resumable generation plumbing (user 2026-07-22) ──────────────────────
+// /api/ops now SUBMITS to fal's queue and returns { requestId }; the actual
+// result comes from polling /api/ops/status. The request id is stored on the
+// pending node so any later session (after refresh / canvas switch) can
+// resume polling via resumePendingOps below — the old fal.subscribe flow
+// died with the tab that opened it.
+
+type Capability = 'generate' | 'edit' | 'inpaint'
+
+function capabilityForOp(op: Operation): Capability {
+  if (op.type === 'generate') return 'generate'
+  // Guided region edits (non-gpt-image-2) ride the 'edit' capability — same
+  // routing the soft-region dispatch branch uses at submit time.
+  if (op.type === 'inpaint') return op.model === 'gpt-image-2' ? 'inpaint' : 'edit'
+  return 'edit'
+}
+
+const POLL_INTERVAL_MS = 2500
+// Generous ceiling over the slowest measured model (gpt-image-2 ~4min).
+const POLL_BUDGET_MS = 8 * 60_000
+
+async function pollOpsResult(capability: Capability, model: string, requestId: string): Promise<OpsResponse> {
+  const deadline = Date.now() + POLL_BUDGET_MS
+  while (Date.now() < deadline) {
+    const r = await apiPost<Partial<OpsResponse> & { status?: string }>('/api/ops/status', {
+      capability,
+      model,
+      requestId,
+    })
+    if (r.imageUrl) return r as OpsResponse
+    await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS))
+  }
+  throw new Error('timed out waiting for the model')
+}
+
+async function runModel(
   editor: Editor,
   shapeId: TLShapeId,
-  op: Operation,
-  parentUrl: string | undefined,
-  resolveRef: (id: string) => string | undefined
-): Promise<void> {
-  // Fix round 2 (human-reported, applies to done/fail/the dims backfill
-  // below): all three are pending->settled status transitions on a node
-  // that already exists (created, with its own undo entry, back in runOp).
-  // Wrapped in `editor.run(fn, { history: 'ignore' })` so they don't ALSO
-  // push undo entries — otherwise Cmd-Z right after a result lands reverts
-  // 'done'/'error' back to 'pending' (a dead spinner) instead of undoing the
-  // node's creation outright.
+  capability: Capability,
+  payload: { model: string; prompt: string; imageUrl?: string; maskUrl?: string; referenceUrls?: string[] }
+): Promise<OpsResponse> {
+  const first = await apiPost<OpsResponse | { requestId: string }>('/api/ops', { capability, ...payload })
+  // FAL_MOCK short-circuits with the full result — no queue to poll.
+  if ('imageUrl' in first) return first
+  if (editor.getShape(shapeId)) {
+    editor.run(
+      () =>
+        editor.updateShape<ImageNodeShape>({
+          id: shapeId,
+          type: 'image-node',
+          props: { falRequestId: first.requestId },
+        }),
+      { history: 'ignore' }
+    )
+  }
+  return pollOpsResult(capability, payload.model, first.requestId)
+}
+
+// Re-attach polling for every pending node that carries a falRequestId —
+// called by CanvasApp right after snapshot load + sweep (which now leaves
+// such nodes pending instead of erroring them). Guided region edits redo
+// their client-side composite step, same as the live dispatch path.
+export function resumePendingOps(editor: Editor): void {
+  for (const s of nodes(editor)) {
+    const requestId = s.props.falRequestId
+    if (s.props.status !== 'pending' || !requestId) continue
+    const op = s.props.op
+    if (!('model' in op) || !op.model) continue
+    const { done, fail } = makeSettlers(editor, s.id)
+    void (async () => {
+      try {
+        const resp = await pollOpsResult(capabilityForOp(op), op.model, requestId)
+        if (op.type === 'inpaint' && op.model !== 'gpt-image-2') {
+          const parent = s.props.sourceId ? nodes(editor).find((n) => n.id === s.props.sourceId) : undefined
+          if (parent?.props.assetUrl) {
+            const { compositeRegion } = await import('@/lib/instant-ops')
+            const out = await compositeRegion(parent.props.assetUrl, resp.imageUrl, op.rect)
+            const { url } = await apiPost<{ url: string }>('/api/upload', { dataUrl: out.dataUrl }, false)
+            done({ imageUrl: url, width: out.width, height: out.height })
+            return
+          }
+        }
+        done(resp)
+      } catch (e) {
+        fail(e)
+      }
+    })()
+  }
+}
+
+// Fix round 2 (human-reported, applies to done/fail/the dims backfill
+// below): all three are pending->settled status transitions on a node
+// that already exists (created, with its own undo entry, back in runOp).
+// Wrapped in `editor.run(fn, { history: 'ignore' })` so they don't ALSO
+// push undo entries — otherwise Cmd-Z right after a result lands reverts
+// 'done'/'error' back to 'pending' (a dead spinner) instead of undoing the
+// node's creation outright. Extracted from dispatch() into a factory
+// (2026-07-22) so resumePendingOps shares the exact settle behavior; both
+// settlers also clear falRequestId — the queue request is finished either
+// way.
+function makeSettlers(editor: Editor, shapeId: TLShapeId) {
   const done = (r: OpsResponse) => {
     editor.run(
       () => {
@@ -392,6 +479,7 @@ async function dispatch(
             naturalW: r.width,
             naturalH: r.height,
             h: r.width ? Math.round(IMAGE_NODE_W * (r.height / r.width)) + 18 : 150,
+            falRequestId: undefined,
           },
         })
       },
@@ -453,21 +541,27 @@ async function dispatch(
             status: 'error',
             errorCode: (e as { code?: string })?.code ?? 'error',
             errorMessage: e instanceof Error ? e.message : 'Something went wrong.',
+            falRequestId: undefined,
           },
         })
       },
       { history: 'ignore' }
     )
+  return { done, fail }
+}
+
+async function dispatch(
+  editor: Editor,
+  shapeId: TLShapeId,
+  op: Operation,
+  parentUrl: string | undefined,
+  resolveRef: (id: string) => string | undefined
+): Promise<void> {
+  const { done, fail } = makeSettlers(editor, shapeId)
   try {
     switch (op.type) {
       case 'generate': {
-        done(
-          await apiPost<OpsResponse>('/api/ops', {
-            capability: 'generate',
-            model: op.model,
-            prompt: op.prompt,
-          })
-        )
+        done(await runModel(editor, shapeId, 'generate', { model: op.model, prompt: op.prompt }))
         break
       }
       case 'edit': {
@@ -478,8 +572,7 @@ async function dispatch(
         const refIds = [...(op.referenceNodeIds ?? []), ...(op.referenceNodeId ? [op.referenceNodeId] : [])]
         const refUrls = refIds.map((id) => resolveRef(id)).filter((u): u is string => !!u)
         done(
-          await apiPost<OpsResponse>('/api/ops', {
-            capability: 'edit',
+          await runModel(editor, shapeId, 'edit', {
             model: op.model,
             prompt: op.prompt,
             imageUrl: parentUrl,
@@ -523,8 +616,7 @@ async function dispatch(
           // GPT_IMAGE_2_EDIT) composes `image_urls: [imageUrl,
           // ...referenceUrls]` itself; this just hands refs through.
           done(
-            await apiPost<OpsResponse>('/api/ops', {
-              capability: 'inpaint',
+            await runModel(editor, shapeId, 'inpaint', {
               model: op.model,
               prompt: op.prompt,
               imageUrl: parentUrl,
@@ -540,8 +632,7 @@ async function dispatch(
             { dataUrl: annotatedDataUrl },
             false
           )
-          const resp = await apiPost<OpsResponse>('/api/ops', {
-            capability: 'edit',
+          const resp = await runModel(editor, shapeId, 'edit', {
             model: op.model,
             prompt: `Apply the following change ONLY inside the red rectangle outline drawn on the image. Keep everything outside the rectangle exactly the same, and remove the red rectangle from the final output. Change: ${op.prompt}`,
             imageUrl: annotatedUrl,
