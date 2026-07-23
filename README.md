@@ -1,4 +1,4 @@
-# Media Lab (repo: gen_media)
+# Media Canvas (repo: gen_media)
 
 A canvas where every AI image generation and edit is a node in a branching
 version tree, so you can iterate, compare, and branch precisely instead of
@@ -11,18 +11,18 @@ build history live in `docs/` and this repo's git log (see
 ## The three problems it answers
 
 1. **Whack-a-mole editing** — ask a model to change one thing, it changes
-   five. Media Lab answers this with instruction-based rect-region editing
+   five. Media Canvas answers this with instruction-based rect-region editing
    (draw a region, describe the *change* to it — "make it blue" — via
    GPT Image 2's masked edit, which edits the existing content in place
    rather than regenerating it from a prompt) plus cheap side-by-side
    variant branching, so you can compare instead of gambling on one shot.
 2. **Chat is the wrong UI for visual work** — no spatial history, no easy
-   way to go back and try something different from version 3. Media Lab
+   way to go back and try something different from version 3. Media Canvas
    answers this with a Canvas-First branching tree: every generation and
    edit is a node, every retry is a sibling, and you can zoom into any
    point in the history and branch from there.
 3. **Deterministic edits shouldn't need a model** — crop and resize don't
-   need a diffusion call, but chat tools give you no toolbelt. Media Lab
+   need a diffusion call, but chat tools give you no toolbelt. Media Canvas
    answers this with instant, client-side deterministic ops that create
    nodes immediately, no model round-trip. (Text overlay was scoped in here
    too but is parked — see "Explicitly OUT of weekend scope" in `CLAUDE.md`.)
