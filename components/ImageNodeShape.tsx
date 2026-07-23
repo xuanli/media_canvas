@@ -170,6 +170,8 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
     errorCode: T.string.optional(),
     errorMessage: T.string.optional(),
     createdAt: T.number,
+    // Mark-as-final (2026-07-22) — optional, same rationale as `name`.
+    final: T.boolean.optional(),
   }
 
   override getDefaultProps(): VersionNodeProps {
@@ -287,7 +289,15 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         width: p.w,
         height: p.h,
         background: color.cardBg,
-        border: pickable ? `1px dashed ${color.accent}` : `1px solid ${color.border}`,
+        // Mark-as-final ring (2026-07-22): a 2px accent border + soft glow
+        // makes THE deliverable pop out of the tree. Pick-target dashed
+        // border still wins while a reference pick is armed.
+        border: pickable
+          ? `1px dashed ${color.accent}`
+          : p.final
+            ? `2px solid ${color.accent}`
+            : `1px solid ${color.border}`,
+        boxShadow: p.final && !pickable ? `0 0 0 4px ${color.accentDim}` : undefined,
         borderRadius: metric.radiusLg,
         padding: 5,
         display: 'flex',
@@ -295,6 +305,26 @@ function ImageNodeComponent({ shape }: { shape: ImageNodeShape }) {
         cursor: pickable ? 'crosshair' : undefined,
       }}
     >
+      {p.final && (
+        <div
+          style={{
+            position: 'absolute',
+            top: -10,
+            left: 8,
+            zIndex: 15,
+            background: color.accent,
+            color: color.accentText,
+            fontFamily: typeTok.fontUi,
+            fontSize: typeTok.nano,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+            padding: '2px 7px',
+            borderRadius: 4,
+          }}
+        >
+          ★ FINAL
+        </div>
+      )}
       {/* gm-alpha-check: subtle checker shows through transparent image
           regions (e.g. logo PNGs) so light ink stays visible on light cards
           and dark ink on dark cards — invisible behind opaque photos. */}

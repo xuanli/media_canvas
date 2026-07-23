@@ -926,6 +926,26 @@ export function CommandBar() {
           </button>
         )
       })}
+      {/* Mark-as-final (user 2026-07-22): flags THE deliverable — accent
+          ring + badge on the node (ImageNodeShape). Toggle stored on the
+          shape prop so it travels in the snapshot; history:'ignore' keeps it
+          off the undo stack the way status transitions are. */}
+      <button
+        className="gm-btn"
+        disabled={p.status !== 'done'}
+        title={p.final ? 'unmark as final' : 'mark as the final result'}
+        aria-pressed={!!p.final}
+        onClick={() => {
+          if (p.status !== 'done') return
+          editor.run(
+            () => editor.updateShape<ImageNodeShape>({ id: sel.id, type: 'image-node', props: { final: !p.final } }),
+            { history: 'ignore' }
+          )
+        }}
+        style={verbBtnStyle(!!p.final, p.status !== 'done')}
+      >
+        {p.final ? '★ Final' : '☆ Final'}
+      </button>
       <a
         href={p.status === 'done' ? p.assetUrl : undefined}
         download

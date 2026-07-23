@@ -65,6 +65,9 @@ export interface VersionNodeProps {
   falRequestId?: string
   errorCode?: string; errorMessage?: string
   createdAt: number
+  // Mark-as-final (user 2026-07-22): user flags a node as THE deliverable —
+  // renders an accent ring + "★ Final" badge. Optional so old snapshots load.
+  final?: boolean
 }
 
 export interface OpsResponse { imageUrl: string; width: number; height: number }
