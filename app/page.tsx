@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, type FormEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { apiPost, apiDelete } from '@/lib/api-client'
+import { apiPost, apiDelete, getPasscode } from '@/lib/api-client'
+import { EXAMPLE_CANVAS } from '@/lib/example-canvas'
 import { color, metric, type as typeTok, buttonPrimary, inputField } from '@/lib/design'
 import { IconX } from '@/components/icons'
 import { MediaLabMark } from '@/components/TopNav'
@@ -77,7 +78,12 @@ export default function Home() {
     setRecent(loadRecent())
   }, [])
 
+  // Which action the passcode form should retry after unlock (the example
+  // card needs the passcode too — its copy-on-open does a create + save).
+  const pendingActionRef = useRef<'new' | 'example'>('new')
+
   const newCanvas = async (isRetry = false) => {
+    pendingActionRef.current = 'new'
     setBusy(true)
     setError(null)
     try {
@@ -95,10 +101,44 @@ export default function Home() {
     }
   }
 
+  // Example canvas, copy-on-open (user 2026-07-22): clone the master
+  // snapshot into a fresh canvas so every visitor gets their own editable
+  // playground and the master stays pristine. Master id/title in
+  // lib/example-canvas.ts.
+  const openExample = async (isRetry = false) => {
+    pendingActionRef.current = 'example'
+    setBusy(true)
+    setError(null)
+    try {
+      const snapRes = await fetch(`/api/canvas/${EXAMPLE_CANVAS.id}`, { cache: 'no-store' })
+      if (!snapRes.ok) throw new Error('The example canvas is unavailable right now.')
+      const snapshot = await snapRes.json()
+      const { id } = await apiPost<{ id: string }>('/api/canvas', {}, false)
+      const put = await fetch(`/api/canvas/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-gm-passcode': getPasscode() },
+        body: JSON.stringify(snapshot),
+      })
+      if (put.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 })
+      if (!put.ok) throw new Error('Could not copy the example canvas.')
+      router.push(`/c/${id}`)
+    } catch (e) {
+      const status = e && typeof e === 'object' && 'status' in e ? (e as { status?: unknown }).status : undefined
+      if (status === 401) {
+        setNeedsPasscode(true)
+        setPasscodeError(isRetry ? 'Wrong passcode, try again.' : null)
+      } else {
+        setError(e instanceof Error ? e.message : 'Something went wrong.')
+      }
+      setBusy(false)
+    }
+  }
+
   const unlock = async (e: FormEvent) => {
     e.preventDefault()
     localStorage.setItem('gm-passcode', passcodeValue)
-    await newCanvas(true)
+    if (pendingActionRef.current === 'example') await openExample(true)
+    else await newCanvas(true)
   }
 
   // Task 17B: id of the canvas pending delete confirmation, or null when the
@@ -142,12 +182,12 @@ export default function Home() {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        // Empty state stays the original hero-only, dead-centered layout;
-        // once there are recents, the page anchors to the top and scrolls
-        // so the grid below the hero has room to grow past 10 entries.
-        justifyContent: hasRecent ? 'flex-start' : 'center',
-        overflowY: hasRecent ? 'auto' : 'hidden',
-        padding: hasRecent ? '64px 24px 48px' : 0,
+        // Always top-anchored + scrollable (2026-07-22): the pinned example
+        // card renders even with no recents, so the old hero-only centered
+        // empty state no longer exists.
+        justifyContent: 'flex-start',
+        overflowY: 'auto',
+        padding: '64px 24px 48px',
         boxSizing: 'border-box',
         background: color.navBg,
         color: color.text,
@@ -199,9 +239,10 @@ export default function Home() {
         {error && <div style={{ fontSize: typeTok.secondary, color: color.danger }}>{error}</div>}
       </div>
 
-      {hasRecent && (
-        <div style={{ width: '100%', maxWidth: 640, marginTop: 40, display: 'flex', flexDirection: 'column', gap: metric.gapMd }}>
-          <div style={{ fontSize: typeTok.secondary, color: color.textSecondary, fontWeight: 600 }}>Your canvases</div>
+      <div style={{ width: '100%', maxWidth: 640, marginTop: 40, display: 'flex', flexDirection: 'column', gap: metric.gapMd }}>
+          <div style={{ fontSize: typeTok.secondary, color: color.textSecondary, fontWeight: 600 }}>
+            {hasRecent ? 'Your canvases' : 'Start here'}
+          </div>
           <div
             style={{
               display: 'grid',
@@ -209,6 +250,45 @@ export default function Home() {
               gap: metric.gapMd,
             }}
           >
+            {/* Pinned example (user 2026-07-22): copy-on-open showcase
+                canvas — always first, accent-tinted, no delete affordance. */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => void openExample()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  void openExample()
+                }
+              }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                background: color.accentDim,
+                border: `1px solid ${color.accent}`,
+                borderRadius: metric.radiusLg,
+                padding: metric.gapMd,
+                cursor: busy ? 'wait' : 'pointer',
+                boxSizing: 'border-box',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: typeTok.base,
+                  color: color.text,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                ✨ {EXAMPLE_CANVAS.title}
+              </span>
+              <span style={{ fontSize: typeTok.micro, color: color.textSecondary }}>
+                opens your own copy to explore
+              </span>
+            </div>
             {recent.map((entry) => (
               <div
                 key={entry.id}
@@ -277,7 +357,6 @@ export default function Home() {
             This list is saved in your browser — canvases stay available at their links.
           </div>
         </div>
-      )}
 
       <ConfirmDialog
         open={confirmDeleteId !== null}
