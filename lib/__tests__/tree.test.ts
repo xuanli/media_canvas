@@ -63,3 +63,52 @@ describe('layoutTree', () => {
     expect(pos.size).toBe(3)
   })
 })
+
+describe('layoutTree ref-assets', () => {
+  const N = (id: string, sourceId: string | null = null, refTargets?: string[]) => ({
+    id, w: 240, h: 150, sourceId, refTargets,
+  })
+
+  it('places a childless ref-asset directly below its target, same column', () => {
+    // root -> child; logo refs the child
+    const pos = layoutTree([N('root'), N('child', 'root'), N('logo', null, ['child'])])
+    // logo shares the TARGET's column (short vertical dashed edge)...
+    expect(pos.get('logo')!.x).toBe(pos.get('child')!.x)
+    // ...seated below it
+    expect(pos.get('logo')!.y).toBeGreaterThanOrEqual(pos.get('child')!.y + 150)
+  })
+
+  it('does not treat a ref-asset WITH children as a ref-asset', () => {
+    const pos = layoutTree([N('a'), N('b', 'a'), N('styled', null, ['b']), N('kid', 'styled')])
+    // 'styled' has its own child, so it stays a normal stacked root at col 0
+    expect(pos.get('styled')!.x).toBe(pos.get('a')!.x)
+    expect(pos.get('kid')!.x).toBeGreaterThan(pos.get('styled')!.x)
+  })
+
+  it('keeps two ref-assets in the same column from overlapping', () => {
+    const pos = layoutTree([
+      N('r1'), N('c1', 'r1'), N('r2'), N('c2', 'r2'),
+      N('logoA', null, ['c1']), N('logoB', null, ['c2']),
+    ])
+    const a = pos.get('logoA')!, b = pos.get('logoB')!
+    expect(a.x).toBe(b.x)
+    expect(Math.abs(a.y - b.y)).toBeGreaterThanOrEqual(150)
+  })
+})
+
+describe('layoutTree ref-asset above-seat fallback', () => {
+  const N = (id: string, sourceId: string | null = null, refTargets?: string[]) => ({
+    id, w: 240, h: 150, sourceId, refTargets,
+  })
+
+  it('seats a ref above its target when the below-seat is occupied by another tree', () => {
+    // tree1 (a->b) stacked above tree2 (c->d); logo refs b, but the slot
+    // below b is roughly d's row — the above-seat is free and closer.
+    const pos = layoutTree([N('a'), N('b', 'a'), N('c'), N('d', 'c'), N('logo', null, ['b'])])
+    const b = pos.get('b')!, logo = pos.get('logo')!
+    expect(logo.x).toBe(b.x)
+    // ends up adjacent to b (above or below within one row), never a full
+    // tree-row away
+    expect(Math.abs(logo.y - b.y)).toBeLessThanOrEqual(150 + 40 + 1)
+  })
+})

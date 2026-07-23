@@ -21,6 +21,14 @@ export interface LayoutNode {
   w: number
   h: number
   sourceId: string | null
+  // Rounds 2-3 (user 2026-07-22: ref nodes stacked at the bottom drawing
+  // full-canvas dashed diagonals; a column-left placement still crossed
+  // columns): ids of nodes this node feeds as a REFERENCE (dashed edges).
+  // Childless roots that only exist as references (logo cards, style refs)
+  // are pulled out of the root stack and seated DIRECTLY BELOW their topmost
+  // target in the SAME column — the dashed edge becomes a short vertical hop
+  // that crosses nothing.
+  refTargets?: string[]
 }
 
 export function layoutTree(nodesIn: LayoutNode[]): Map<string, { x: number; y: number }> {
@@ -38,16 +46,32 @@ export function layoutTree(nodesIn: LayoutNode[]): Map<string, { x: number; y: n
     }
   }
 
+  // Pure ref-assets leave the root stack (see LayoutNode.refTargets): a
+  // childless root whose only relationship is feeding references.
+  const isRefAsset = (n: LayoutNode) =>
+    roots.includes(n) && !(children.get(n.id)?.length ?? 0) && (n.refTargets?.length ?? 0) > 0
+  const mainRoots = roots.filter((r) => !isRefAsset(r))
+  const refAssets = roots.filter(isRefAsset)
+
   // Depth per node (visited guard: a corrupt snapshot with a sourceId cycle
   // must not hang the tab — cycle members simply never get reached from a
   // root and fall back to depth 0 / origin placement).
   const depth = new Map<string, number>()
-  const stack: Array<[LayoutNode, number]> = roots.map((r) => [r, 0])
+  const stack: Array<[LayoutNode, number]> = mainRoots.map((r) => [r, 0])
   while (stack.length) {
     const [n, d] = stack.pop()!
     if (depth.has(n.id)) continue
     depth.set(n.id, d)
     for (const c of children.get(n.id) ?? []) stack.push([c, d + 1])
+  }
+  // Ref-assets share their shallowest target's COLUMN (round 3, user
+  // 2026-07-22 "still a lot of line cross"): sitting directly BELOW the
+  // target makes the dashed edge a short vertical hop that crosses nothing —
+  // an earlier-column placement made every ref edge traverse the columns in
+  // between.
+  for (const r of refAssets) {
+    const targetDepths = (r.refTargets ?? []).map((t) => depth.get(t) ?? 1)
+    depth.set(r.id, Math.min(...targetDepths))
   }
 
   const colW: number[] = []
@@ -90,14 +114,72 @@ export function layoutTree(nodesIn: LayoutNode[]): Map<string, { x: number; y: n
     }
   }
   let y0 = 0
-  for (const r of roots) {
+  for (const r of mainRoots) {
     assign(r, y0)
     y0 += (H.get(r.id) ?? r.h) + GAP_Y * 2
   }
+
+  // Pass 2 — ref-assets: row-aligned with their first (topmost) target,
+  // pushed down past any occupant of the same column until free.
+  const colBoxes = new Map<number, Array<{ y: number; h: number }>>()
+  for (const n of nodesIn) {
+    const p = pos.get(n.id)
+    if (!p) continue
+    const d = depth.get(n.id) ?? 0
+    const list = colBoxes.get(d)
+    if (list) list.push({ y: p.y, h: n.h })
+    else colBoxes.set(d, [{ y: p.y, h: n.h }])
+  }
+  // Desired seat: directly below the topmost target node.
+  const belowTargetY = (r: LayoutNode) => {
+    const targets = (r.refTargets ?? [])
+      .map((t) => ({ p: pos.get(t), n: byId.get(t) }))
+      .filter((x): x is { p: { x: number; y: number }; n: LayoutNode } => !!x.p && !!x.n)
+    if (!targets.length) return y0
+    const top = targets.reduce((a, b) => (a.p.y <= b.p.y ? a : b))
+    return top.p.y + top.n.h + GAP_Y
+  }
+  const topTarget = (r: LayoutNode) => {
+    const targets = (r.refTargets ?? [])
+      .map((t) => ({ p: pos.get(t), n: byId.get(t) }))
+      .filter((x): x is { p: { x: number; y: number }; n: LayoutNode } => !!x.p && !!x.n)
+    if (!targets.length) return null
+    return targets.reduce((a, b) => (a.p.y <= b.p.y ? a : b))
+  }
+  for (const r of [...refAssets].sort((a, b) => belowTargetY(a) - belowTargetY(b))) {
+    const d = depth.get(r.id) ?? 0
+    const boxes = (colBoxes.get(d) ?? []).sort((a, b) => a.y - b.y)
+    const free = (y: number) => !boxes.some((b) => y < b.y + b.h + GAP_Y && b.y < y + r.h + GAP_Y)
+    let y = belowTargetY(r)
+    for (const b of boxes) {
+      const overlaps = y < b.y + b.h + GAP_Y && b.y < y + r.h + GAP_Y
+      if (overlaps) y = b.y + b.h + GAP_Y
+    }
+    // Round 4 (user screenshot: a ref whose below-seat was occupied got
+    // pushed past a whole tree row, its edge spearing through the nodes in
+    // between): if the resolved below-seat drifted away from the target,
+    // try the seat directly ABOVE the target and take whichever is closer.
+    const tt = topTarget(r)
+    if (tt) {
+      const desired = tt.p.y + tt.n.h + GAP_Y
+      const above = tt.p.y - r.h - GAP_Y
+      if (y !== desired && free(above) && Math.abs(above - tt.p.y) < Math.abs(y - tt.p.y)) {
+        y = above
+      }
+    }
+    pos.set(r.id, { x: colX[d] ?? 0, y })
+    const list = colBoxes.get(d)
+    if (list) list.push({ y, h: r.h })
+    else colBoxes.set(d, [{ y, h: r.h }])
+  }
+
   // Unreached nodes (cycles): drop them at the origin column untouched
   // rather than losing them entirely.
   for (const n of nodesIn) {
-    if (!pos.has(n.id)) pos.set(n.id, { x: 0, y: y0 })
+    if (!pos.has(n.id)) {
+      pos.set(n.id, { x: 0, y: y0 })
+      y0 += n.h + GAP_Y
+    }
   }
   return pos
 }

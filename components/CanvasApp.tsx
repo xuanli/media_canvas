@@ -487,6 +487,22 @@ function ZoomCluster() {
           // sizes. Children sort by seq so sibling stacks follow version
           // order top-to-bottom.
           const sorted = [...ns].sort((a, b) => a.props.seq - b.props.seq)
+          // Ref relationships from the stored recipes (op.referenceNodeIds):
+          // lets layoutTree place reference-only assets (logo cards, style
+          // refs) beside the node they feed instead of in the root stack.
+          const refTargetsById = new Map<string, string[]>()
+          for (const s of sorted) {
+            const o = s.props.op
+            const refs = [
+              ...(('referenceNodeIds' in o && o.referenceNodeIds) || []),
+              ...('referenceNodeId' in o && o.referenceNodeId ? [o.referenceNodeId] : []),
+            ]
+            for (const r of refs) {
+              const list = refTargetsById.get(r)
+              if (list) list.push(s.id as string)
+              else refTargetsById.set(r, [s.id as string])
+            }
+          }
           const layoutInput = sorted.map((s) => {
             const ratio =
               s.props.naturalW > 0 && s.props.naturalH > 0
@@ -494,7 +510,7 @@ function ZoomCluster() {
                 : Math.max(0.3, (s.props.h - 18) / Math.max(1, s.props.w))
             const w = IMAGE_NODE_W
             const h = Math.round(w * ratio) + 18
-            return { id: s.id as string, w, h, sourceId: s.props.sourceId }
+            return { id: s.id as string, w, h, sourceId: s.props.sourceId, refTargets: refTargetsById.get(s.id) }
           })
           const posMap = layoutTree(layoutInput)
           editor.updateShapes(
