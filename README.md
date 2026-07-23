@@ -1,176 +1,64 @@
-# Media Canvas (repo: gen_media)
+# Media Canvas
 
-A canvas where every AI image generation and edit is a node in a branching
-version tree, so you can iterate, compare, and branch precisely instead of
-fighting a chat window.
+Generate, refine, and compare AI image variations on one branching canvas — instead of fighting a chat window that overwrites your last result.
 
-Built for an Anthropic take-home. Full design rationale, decisions, and
-build history live in `docs/` and this repo's git log (see
-[AI-collaboration](#ai-collaboration) below).
+**Live demo:** https://genmedia-theta.vercel.app · **Design rationale:** [`docs/DESIGN_RATIONALE.md`](docs/DESIGN_RATIONALE.md)
 
-## The three problems it answers
+Built for an Anthropic take-home (Theme 2: Creative & Generative Tools).
 
-1. **Whack-a-mole editing** — ask a model to change one thing, it changes
-   five. Media Canvas answers this with instruction-based rect-region editing
-   (draw a region, describe the *change* to it — "make it blue" — via
-   GPT Image 2's masked edit, which edits the existing content in place
-   rather than regenerating it from a prompt) plus cheap side-by-side
-   variant branching, so you can compare instead of gambling on one shot.
-2. **Chat is the wrong UI for visual work** — no spatial history, no easy
-   way to go back and try something different from version 3. Media Canvas
-   answers this with a Canvas-First branching tree: every generation and
-   edit is a node, every retry is a sibling, and you can zoom into any
-   point in the history and branch from there.
-3. **Deterministic edits shouldn't need a model** — crop and resize don't
-   need a diffusion call, but chat tools give you no toolbelt. Media Canvas
-   answers this with instant, client-side deterministic ops that create
-   nodes immediately, no model round-trip. (Text overlay was scoped in here
-   too but is parked — see "Explicitly OUT of weekend scope" in `CLAUDE.md`.)
+## The problem
+
+I run a company (Komos) and constantly need to produce media assets. Today's AI image models are amazing at *generating* rich, realistic images — but frustrating to actually *work* with:
+
+- **You can't edit precisely.** Ask a model to change one thing and it changes five. And simple deterministic edits — crop, resize, adjust lighting — it can't do accurately at all, so you end up exporting to a separate editor and switching back and forth.
+- **Chat is the wrong shape for visual work.** A linear thread is a bad way to hold several variations side by side and compare them. Each new message overwrites the last visual, and there's no easy way to go back to version 3 and try a different direction.
+- **No first-class references.** Feeding an earlier version back in as a reference means copy-pasting screenshots.
+
+## How Media Canvas solves it
+
+**One branching canvas.** Every generation and every edit becomes a node connected to its parent, laid out on an infinite canvas — a global, visual view of how an asset evolved. Branch from any point, generate several variations at once, and compare them side by side. Nothing is overwritten.
+
+**Precision tools and AI editing in one place.** Two kinds of operations, on the same node:
+
+- **Instant, deterministic edits** — crop, resize, rotate/flip, brightness/contrast/saturation, redact — run client-side in the browser. No model call, no cost, no round-trip.
+- **AI edits** — generate, edit, region edit (draw a box, describe the change), all with optional reference images — call a model through fal.ai.
+
+No more switching between an AI tool and a traditional editor.
 
 ## Quickstart
 
+Run it free and fully offline — no API keys, no spend:
+
 ```bash
 pnpm i
-cp .env.example .env.local   # see below for the free offline mode
-pnpm dev
-```
-
-### Free, fully offline mode (no API keys, no spend)
-
-```bash
 FAL_MOCK=1 STORAGE_MOCK=1 pnpm dev
 ```
 
-`FAL_MOCK=1` swaps real fal.ai calls for a fast in-memory mock (returns a
-generated SVG data URL after a simulated ~1.5s delay); `STORAGE_MOCK=1`
-swaps Vercel Blob for an in-memory canvas store (single-process, resets on
-restart). No `FAL_KEY`, no `BLOB_READ_WRITE_TOKEN`, no `APP_PASSCODE`
-needed in this mode — the passcode gate fails open when `APP_PASSCODE` is
-unset outside production. This is also how `pnpm test:e2e` runs (see
-`playwright.config.ts`).
+Mock mode returns placeholder images and keeps canvases in memory, so you can explore the whole experience with zero setup.
 
-### Real mode
+For real models, copy `.env.example` to `.env.local` and set `FAL_KEY` (from https://fal.ai/dashboard/keys — **set a spend cap first**), then `pnpm dev`.
 
-Fill in `.env.local` from `.env.example`:
-
-- `FAL_KEY` — from https://fal.ai/dashboard/keys. **Set a spend cap in the
-  fal dashboard before using a real key** — there is no server-side rate
-  limiting in this prototype, the spend cap is the money backstop.
-- `APP_PASSCODE` — any string; required to mutate (`/api/ops`,
-  `/api/canvas`). Sent as the `x-gm-passcode` header, entered once in the UI
-  and cached in `localStorage`.
-- `BLOB_READ_WRITE_TOKEN` — only needed if you want real Vercel Blob
-  persistence locally instead of `STORAGE_MOCK=1`.
-
-### Tests
-
-```bash
-pnpm test        # unit tests — pure logic (tree, schemas, errors)
-pnpm test:e2e     # Playwright, fully mocked, zero-console-error assertions
-```
-
-`docs/verify.md` is the human demo-path checklist — the judgment calls
-(does an edit actually look right, does the UX feel right) that automated
-tests can't make for you. Walk it before every deploy.
-
-## Architecture sketch
+## How it works
 
 ```
-Browser: Next.js client
-  Canvas (tldraw editor, in-memory) — SINGLE SOURCE OF TRUTH
-    versions = custom tldraw shapes (op metadata as validated shape props)
-    edges = bound, labeled tldraw arrows (derived from each node's op)
-    instant ops (crop/resize) run here, in an offscreen <canvas>
-        │  POST /api/ops      (model ops: generate/edit/inpaint)
-        │  POST /api/upload   (instant-op PNG → durable CDN URL)
-        │  GET/PUT /api/canvas/:id  (snapshot autosave, ~2s debounce)
-Server: Next.js API routes (stateless; holds FAL_KEY + APP_PASSCODE)
-  passcode check → zod validate → capability registry lookup → fal.subscribe
-        │                                              │
-fal.ai models + fal.media CDN (images)          Vercel Blob (canvas JSON)
+Browser (Next.js + tldraw)  ──  the canvas is the source of truth
+  • every node is a tldraw shape carrying the op that produced it
+  • deterministic ops (crop/resize/…) run in an offscreen <canvas>
+        │  POST /api/ops             — model ops (queued on fal, resumable)
+        │  GET/PUT /api/canvas/:id    — snapshot autosave (~1s debounce)
+Server (Next.js API routes, stateless)
+        │
+   fal.ai models              Vercel Blob (one JSON snapshot per canvas)
 ```
 
-- **Canvas as source of truth.** The tldraw store — not React state, not a
-  server DB — is authoritative in the browser. Persistence is
-  canvas-as-URL: a canvas lives at `/c/:id`, its full snapshot JSON is
-  autosaved to Vercel Blob (`GET/PUT /api/canvas/:id`), last-write-wins.
-  There is no `IndexedDB`/`persistenceKey` local persistence layer — the
-  server copy is the single durable authority, so two tabs on the same
-  `/c/:id` don't fight two different sources of truth.
-- **Ops as recipes, one dispatch point.** Every mutation — model call or
-  instant transform — is a serializable op object that flows through one
-  `runOp(parentId, op, variantCount)` entry point (`lib/run-op.ts`). The op
-  that produced a node lives ON that node: provenance = recipe = retry
-  target. No LLM sits in the operation loop; a future agent would just be
-  another producer of these same op objects.
-- **Capability registry, not hardcoded model calls.** `lib/fal-registry.ts`
-  maps `capability → { default model, alternates, param mapper }`
-  (`generate → nano-banana` (alts: gpt-image-2, seedream-5-lite,
-  flux-1.1-pro), `edit → nano-banana` (alts: gpt-image-2, seedream-5-lite),
-  `inpaint → gpt-image-2` only — a masked *instruction* edit, "make it
-  blue", not a generative-fill model describing "what appears"; FLUX Fill
-  was removed 2026-07-21 for exactly that gap, see `CLAUDE.md`). Swapping
-  or adding a model is one registry entry; the ✦ panel only shows a model
-  picker where more than one model is registered for a capability.
-- **Canvas-as-URL blob storage.** No accounts, no database. Anyone with a
-  canvas's URL can view and branch it (see tradeoffs below).
+A few decisions worth calling out:
 
-## Decisions & tradeoffs
+- **Ops as recipes, one dispatch point.** Every edit — model or deterministic — is a serializable op that flows through a single `runOp()` entry point, and the op that produced a node is stored *on* that node. Provenance, retry target, and recipe are the same thing. This abstraction is also what makes a future "agent mode" (composing ops from a high-level instruction) a small step rather than a rewrite.
+- **Capability registry, not hardcoded models.** `lib/fal-registry.ts` maps each capability to its model(s) and parameter mapping; swapping or adding a model is one entry.
+- **Region editing on any model.** Draw a box and describe the change. Models with a real mask API use it directly; for the rest, the region is annotated onto the image and the model's result is composited back *only inside the box* — so pixels outside are guaranteed untouched, whatever the model.
+- **Resumable generations.** Model calls go through fal's queue with the request id stored on the node, so a refresh or canvas-switch mid-generation doesn't lose the result.
+- **Canvas-as-URL storage.** No accounts, no database — each canvas is one JSON snapshot in Vercel Blob at `/c/:id`, shareable by link and gated by a shared passcode on writes. A deliberate prototype scope cut, not a product-grade auth model.
 
-Full rationale: `docs/superpowers/specs/2026-07-20-gen-media-design.md`
-(design spec) and `CLAUDE.md` (locked decisions + the "Later" list of
-consciously deferred scope — multiplayer sync, video ops, freehand mask
-brush, Claude-powered op routing, auth/accounts, compare view, text
-overlay).
+## Built with Claude Code
 
-- **tldraw watermark.** tldraw's free tier renders a "Made with tldraw"
-  watermark without a business license — accepted as a prototype cost for
-  best-in-class canvas feel, free undo/redo, and built-in snapshot
-  persistence primitives.
-- **Unlisted-URL canvas access model.** There are no accounts; anyone who
-  has (or guesses) a canvas's 12-char crypto-random URL can view and branch
-  it, gated only by the shared passcode on mutations. This is a conscious
-  scope cut, not an oversight — real multi-tenant auth was never in the
-  weekend's demo-test scope.
-- **Cancel discards the in-flight result.** There's no way to cancel a
-  pending model call and keep its result if it lands late — cancel just
-  deletes the pending node. Accepted prototype tradeoff.
-- **fal CDN URL retention caveat.** Generated images live at `fal.media`
-  CDN URLs that fal.ai hosts, not URLs this app controls; there's no
-  guarantee about how long fal retains them. Export/download-PNG exist as
-  the escape hatch for anything you want to keep permanently.
-- **Last-write-wins autosave.** Two tabs editing the same `/c/:id`
-  concurrently will silently clobber each other's last save — no
-  operational-transform or merge logic. Fine for the single-user demo case
-  this was scoped for.
-- **Passcode, not accounts.** A single shared passcode (env var,
-  timing-safe compare, header-based) plus a fal dashboard spend cap is the
-  entire security model. It fails CLOSED in production if unset
-  (`lib/server-auth.ts`) and fails open in local dev, matching the offline
-  mock-mode quickstart above.
-
-## Testing story
-
-- **Unit** (`pnpm test`, Vitest): pure logic — tree traversal, zod schema
-  validation, fal error normalization. `lib/__tests__/*.test.ts`.
-- **Mocked E2E** (`pnpm test:e2e`, Playwright): the demo path exercised in a
-  real browser against `FAL_MOCK=1 STORAGE_MOCK=1` — generate, edit-spawns-
-  variants-with-arrows, reload persistence, a real pointer-drag crop, and
-  the reference-pick flow. Zero-console-error assertions on every spec.
-  `e2e/demo.spec.ts`.
-- **Human verification** (`docs/verify.md`): the demo-path checklist for
-  what automation can't judge — real-model output quality, UX feel, and the
-  production fail-closed check (`POST /api/ops` without the passcode header
-  → `401`). Marks which steps duplicate E2E coverage vs. are human-only.
-
-## AI-collaboration
-
-Built with Claude Code end-to-end (spec → plan → task-by-task
-implementation → this README). The full decision trail lives in
-`docs/superpowers/`: the [design spec](docs/superpowers/specs/2026-07-20-gen-media-design.md)
-(problem framing, locked decisions), the [implementation plan](docs/superpowers/plans/2026-07-20-gen-media.md)
-(task breakdown), and the [execution ledger](docs/superpowers/progress-ledger.md)
-(task-by-task record of the subagent build, reviews, and adjudications) —
-plus the git history itself (per-task commits, review/fix-round commits),
-per the assignment's request to show how AI tools were directed and
-evaluated rather than just the final diff.
+This was built end-to-end with Claude Code — spec, plan, implementation, and iteration. The design rationale is in [`docs/DESIGN_RATIONALE.md`](docs/DESIGN_RATIONALE.md); the fuller decision trail lives in `docs/` and the git history (per-feature commits with the rationale in each body), per the assignment's ask to show how the AI was directed and evaluated rather than just the final diff.
