@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       imageUrl: 'imageUrl' in body ? body.imageUrl : undefined,
       maskUrl: 'maskUrl' in body ? body.maskUrl : undefined,
       referenceUrls: 'referenceUrls' in body ? body.referenceUrls : undefined,
+      aspectRatio: 'aspectRatio' in body ? body.aspectRatio : undefined,
     })
     // Resumable generation (user 2026-07-22): was `fal.subscribe` — a
     // single long-lived HTTP round-trip pinned to the submitting browser

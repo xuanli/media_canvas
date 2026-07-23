@@ -79,6 +79,13 @@ export interface ModelEntry {
     imageUrl?: string
     maskUrl?: string
     referenceUrls?: string[]
+    // Source image's aspect ratio snapped to the endpoint enum (bug fix
+    // 2026-07-22): nano-banana-pro/edit's aspect_ratio defaults to "auto",
+    // which with multiple input images can infer from a REFERENCE (observed
+    // live: 16:9 office + 2.5:1 logo card -> 2.49:1 result). Entries that
+    // support an aspect param should pass this through so the result keeps
+    // the BASE image's shape.
+    aspectRatio?: string
   }) => Record<string, unknown>
 }
 
@@ -203,9 +210,12 @@ export const REGISTRY: Record<
       'nano-banana': {
         id: 'fal-ai/nano-banana-pro/edit', // upgraded → nano-banana-pro/edit (same key-stability rationale; pro edit schema verified identical: required prompt + image_urls ARRAY)
         label: 'Nano Banana Pro',
-        toParams: ({ prompt, imageUrl, referenceUrls = [] }) => ({
+        toParams: ({ prompt, imageUrl, referenceUrls = [], aspectRatio }) => ({
           prompt,
           image_urls: [imageUrl, ...referenceUrls].filter(Boolean),
+          // Pin the BASE image's ratio — "auto" can adopt a reference's
+          // shape instead (see ModelEntry.toParams comment).
+          ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
         }),
       },
       'gpt-image-2': GPT_IMAGE_2_EDIT,

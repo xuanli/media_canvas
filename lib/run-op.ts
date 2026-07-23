@@ -383,6 +383,39 @@ export function retryShape(
 // resume polling via resumePendingOps below — the old fal.subscribe flow
 // died with the tab that opened it.
 
+
+// Bug fix (user-reported 2026-07-22, screenshot: 16:9 office + 2.5:1 logo
+// ref produced a 2.49:1 result): snap the SOURCE image's ratio to fal's
+// aspect_ratio enum so edits keep the base image's shape instead of letting
+// "auto" adopt a reference's. Log-distance comparison so e.g. 1.78 maps to
+// 16:9, not 3:2.
+const ASPECT_ENUM: Array<[string, number]> = [
+  ['21:9', 21 / 9],
+  ['16:9', 16 / 9],
+  ['3:2', 3 / 2],
+  ['4:3', 4 / 3],
+  ['5:4', 5 / 4],
+  ['1:1', 1],
+  ['4:5', 4 / 5],
+  ['3:4', 3 / 4],
+  ['2:3', 2 / 3],
+  ['9:16', 9 / 16],
+]
+function nearestAspect(w: number, h: number): string | undefined {
+  if (!w || !h) return undefined
+  const r = w / h
+  let best: string | undefined
+  let bd = Infinity
+  for (const [name, v] of ASPECT_ENUM) {
+    const d = Math.abs(Math.log(r / v))
+    if (d < bd) {
+      bd = d
+      best = name
+    }
+  }
+  return best
+}
+
 type Capability = 'generate' | 'edit' | 'inpaint'
 
 function capabilityForOp(op: Operation): Capability {
@@ -415,7 +448,7 @@ async function runModel(
   editor: Editor,
   shapeId: TLShapeId,
   capability: Capability,
-  payload: { model: string; prompt: string; imageUrl?: string; maskUrl?: string; referenceUrls?: string[] }
+  payload: { model: string; prompt: string; imageUrl?: string; maskUrl?: string; referenceUrls?: string[]; aspectRatio?: string }
 ): Promise<OpsResponse> {
   const first = await apiPost<OpsResponse | { requestId: string }>('/api/ops', { capability, ...payload })
   // FAL_MOCK short-circuits with the full result — no queue to poll.
@@ -568,6 +601,12 @@ async function dispatch(
   resolveRef: (id: string) => string | undefined
 ): Promise<void> {
   const { done, fail } = makeSettlers(editor, shapeId)
+  // Source-image aspect for edit-family calls (see nearestAspect above).
+  const childNode = nodes(editor).find((s) => s.id === shapeId)
+  const parentNode = childNode?.props.sourceId
+    ? nodes(editor).find((n) => n.id === childNode.props.sourceId)
+    : undefined
+  const srcAspect = parentNode ? nearestAspect(parentNode.props.naturalW, parentNode.props.naturalH) : undefined
   try {
     switch (op.type) {
       case 'generate': {
@@ -587,6 +626,7 @@ async function dispatch(
             prompt: op.prompt,
             imageUrl: parentUrl,
             referenceUrls: refUrls.length ? refUrls : undefined,
+            aspectRatio: srcAspect,
           })
         )
         break
@@ -647,6 +687,7 @@ async function dispatch(
             prompt: `Apply the following change ONLY inside the red rectangle outline drawn on the image. Keep everything outside the rectangle exactly the same, and remove the red rectangle from the final output. Change: ${op.prompt}`,
             imageUrl: annotatedUrl,
             referenceUrls: inpaintRefUrls.length ? inpaintRefUrls : undefined,
+            aspectRatio: srcAspect,
           })
           // Deterministic composite (user-reported 2026-07-22: the model kept
           // the red box in real runs): model pixels survive only INSIDE the
