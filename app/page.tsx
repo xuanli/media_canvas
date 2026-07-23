@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
+import { useEffect, useState, type FormEvent, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiPost, apiDelete, getPasscode } from '@/lib/api-client'
 import { EXAMPLE_CANVAS, forkExampleCanvas } from '@/lib/example-canvas'
@@ -82,12 +82,12 @@ export default function Home() {
     setRecent(loadRecent().filter((e) => e.id !== EXAMPLE_CANVAS.id))
   }, [])
 
-  // Which action the passcode form should retry after unlock (the example
-  // card needs the passcode too — its copy-on-open does a create + save).
-  const pendingActionRef = useRef<'new' | 'example'>('new')
+  // Which action the passcode form should retry after unlock, and which
+  // button shows a busy label. State (not a ref) so the label re-renders.
+  const [pendingAction, setPendingAction] = useState<'new' | 'example'>('new')
 
   const newCanvas = async (isRetry = false) => {
-    pendingActionRef.current = 'new'
+    setPendingAction('new')
     setBusy(true)
     setError(null)
     try {
@@ -110,7 +110,7 @@ export default function Home() {
   // playground and the master stays pristine. Master id/title in
   // lib/example-canvas.ts.
   const openExample = async (isRetry = false) => {
-    pendingActionRef.current = 'example'
+    setPendingAction('example')
     setBusy(true)
     setError(null)
     try {
@@ -131,7 +131,7 @@ export default function Home() {
   const unlock = async (e: FormEvent) => {
     e.preventDefault()
     localStorage.setItem('gm-passcode', passcodeValue)
-    if (pendingActionRef.current === 'example') await openExample(true)
+    if (pendingAction === 'example') await openExample(true)
     else await newCanvas(true)
   }
 
@@ -176,12 +176,11 @@ export default function Home() {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        // Always top-anchored + scrollable (2026-07-22): the pinned example
-        // card renders even with no recents, so the old hero-only centered
-        // empty state no longer exists.
-        justifyContent: 'flex-start',
-        overflowY: 'auto',
-        padding: '64px 24px 48px',
+        // No recents → hero + CTAs dead-centered; with recents → top-anchored
+        // and scrollable so the grid has room to grow.
+        justifyContent: hasRecent ? 'flex-start' : 'center',
+        overflowY: hasRecent ? 'auto' : 'hidden',
+        padding: hasRecent ? '64px 24px 48px' : '24px',
         boxSizing: 'border-box',
         background: color.navBg,
         color: color.text,
@@ -199,7 +198,7 @@ export default function Home() {
           <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>Media Canvas</div>
         </div>
         <div style={{ fontSize: 17, color: color.text, opacity: 0.85, maxWidth: 560, lineHeight: 1.5 }}>
-          A canvas where every generation and edit is a branch you can compare and refine.
+          Generate, refine, and compare variations on one canvas.
         </div>
         {needsPasscode ? (
           <form
@@ -221,71 +220,63 @@ export default function Home() {
             {passcodeError && <div style={{ fontSize: typeTok.secondary, color: color.danger }}>{passcodeError}</div>}
           </form>
         ) : (
-          <button
-            className="gm-btn"
-            onClick={() => newCanvas()}
-            disabled={busy}
-            style={{ ...buttonPrimary({ disabled: busy }), marginTop: 8, height: 40, padding: `0 ${metric.gapLg + 6}px` }}
-          >
-            {busy ? 'Creating…' : 'New canvas'}
-          </button>
+          // Two clear starting actions (user 2026-07-22): New canvas
+          // (primary) and Try the example (secondary accent). The example is
+          // no longer a card in "Your canvases" — it was indistinguishable
+          // from a real user copy sitting next to it.
+          <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button
+              className="gm-btn"
+              onClick={() => newCanvas()}
+              disabled={busy}
+              style={{ ...buttonPrimary({ disabled: busy }), height: 44, padding: `0 ${metric.gapLg + 8}px` }}
+            >
+              {busy && pendingAction === 'new' ? 'Creating…' : '+ New canvas'}
+            </button>
+            <button
+              className="gm-btn"
+              onClick={() => void openExample()}
+              disabled={busy}
+              title="opens your own editable copy of the demo"
+              style={{
+                height: 44,
+                padding: `0 ${metric.gapLg + 4}px`,
+                background: color.accentDim,
+                color: color.accent,
+                border: `1px solid ${color.accent}`,
+                borderRadius: metric.radius,
+                fontFamily: typeTok.fontUi,
+                fontSize: typeTok.base,
+                fontWeight: 600,
+                cursor: busy ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                whiteSpace: 'nowrap',
+                boxSizing: 'border-box',
+              }}
+            >
+              {busy && pendingAction === 'example' ? 'Opening…' : '✨ Try the example'}
+            </button>
+          </div>
         )}
         {error && <div style={{ fontSize: typeTok.secondary, color: color.danger }}>{error}</div>}
       </div>
 
-      <div style={{ width: '100%', maxWidth: 640, marginTop: 40, display: 'flex', flexDirection: 'column', gap: metric.gapMd }}>
-          <div style={{ fontSize: typeTok.secondary, color: color.textSecondary, fontWeight: 600 }}>
-            {hasRecent ? 'Your canvases' : 'Start here'}
-          </div>
+      {hasRecent && (
+        <div style={{ width: '100%', maxWidth: 720, marginTop: 44, display: 'flex', flexDirection: 'column', gap: metric.gapMd }}>
+          <div style={{ fontSize: typeTok.secondary, color: color.textSecondary, fontWeight: 600 }}>Your canvases</div>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
               gap: metric.gapMd,
             }}
           >
-            {/* Pinned example (user 2026-07-22): copy-on-open showcase
-                canvas — always first, accent-tinted, no delete affordance. */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => void openExample()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  void openExample()
-                }
-              }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-                background: color.accentDim,
-                border: `1px solid ${color.accent}`,
-                borderRadius: metric.radiusLg,
-                padding: metric.gapMd,
-                cursor: busy ? 'wait' : 'pointer',
-                boxSizing: 'border-box',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: typeTok.base,
-                  color: color.text,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                ✨ {EXAMPLE_CANVAS.title}
-              </span>
-              <span style={{ fontSize: typeTok.micro, color: color.textSecondary }}>
-                opens your own copy to explore
-              </span>
-            </div>
             {recent.map((entry) => (
               <div
                 key={entry.id}
+                className="gm-canvas-card"
                 role="button"
                 tabIndex={0}
                 onClick={() => router.push(`/c/${entry.id}`)}
@@ -322,7 +313,7 @@ export default function Home() {
                 </span>
                 <span style={{ fontSize: typeTok.micro, color: color.textMuted }}>{formatRelativeTime(entry.at)}</span>
                 <button
-                  className="gm-icon-btn"
+                  className="gm-icon-btn gm-card-del"
                   aria-label="delete canvas"
                   title="delete canvas"
                   onClick={(e) => requestDeleteCanvas(entry.id, e)}
@@ -351,6 +342,7 @@ export default function Home() {
             This list is saved in your browser — canvases stay available at their links.
           </div>
         </div>
+      )}
 
       <ConfirmDialog
         open={confirmDeleteId !== null}

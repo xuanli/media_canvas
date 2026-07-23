@@ -344,3 +344,10 @@ html, body { margin: 0; height: 100%; background: var(--gm-body-bg); color: var(
   color: var(--gm-accent);
   font-size: 11px;
 }
+
+/* Landing recents cards (user 2026-07-22 UX pass): subtle hover lift + the
+   delete ✕ only appears on hover/focus, so the resting grid stays calm. */
+.gm-canvas-card { transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease; }
+.gm-canvas-card:hover { border-color: var(--gm-border-strong); transform: translateY(-2px); box-shadow: var(--gm-shadow-card); }
+.gm-card-del { opacity: 0; transition: opacity 120ms ease, color 120ms ease; }
+.gm-canvas-card:hover .gm-card-del, .gm-canvas-card:focus-within .gm-card-del, .gm-card-del:focus-visible { opacity: 1; }
