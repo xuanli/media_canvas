@@ -26,6 +26,8 @@ import { useUiStore } from '@/lib/ui-store'
 import { runOp, runInstantOp, createLocalImageRoot } from '@/lib/run-op'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import type { RectFrac } from '@/lib/types'
+import { ModelSelect } from '@/components/ModelSelect'
+import { frameShape } from '@/lib/camera'
 import { color, metric, type as typeTok, buttonPrimary, buttonSecondary, inputField, textareaField, stepButton, elevation } from '@/lib/design'
 import { IconDownload, IconUpload, IconX } from '@/components/icons'
 
@@ -626,19 +628,7 @@ export function CommandBar() {
             {uploading ? 'Uploading…' : 'Upload'}
           </button>
           <span style={{ flex: 1 }} />
-          <select
-            className="gm-input"
-            value={genModel}
-            onChange={(e) => setGenModel(e.target.value)}
-            style={field}
-            aria-label="generate model"
-          >
-            {GENERATE_MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <ModelSelect value={genModel} onChange={setGenModel} options={GENERATE_MODELS} ariaLabel="generate model" />
           {/* "Run", not "Generate" (user 2026-07-21) — also matches the
               armed Edit tray's primary button, so both moods share one verb. */}
           <button
@@ -801,23 +791,10 @@ export function CommandBar() {
   //     effect up there when the region tool is dismissed however that
   //     happens (Esc, toggle off, Apply/Run, switching verbs).
   const zoomToNode = () => {
-    const b = editor.getShapePageBounds(sel.id)
-    if (!b) return
     if (!prevCameraRef.current) prevCameraRef.current = { ...editor.getCamera() }
-    const vs = editor.getViewportScreenBounds()
-    const SIDE = 120
-    const TOP = 60
-    const BOTTOM = 330
-    const fit = Math.min((vs.w - SIDE * 2) / b.w, (vs.h - TOP - BOTTOM) / b.h)
-    const z = Math.max(0.05, Math.min(fit, 2)) // cap 2x (user 2026-07-22, was 1.5)
-    // Center the node at the middle of the usable band above the bar:
-    // screen = (page + camera) * zoom  ⇒  camera = screen/zoom − page.
-    const sx = vs.w / 2
-    const sy = TOP + (vs.h - TOP - BOTTOM) / 2
-    editor.setCamera(
-      { x: sx / z - (b.x + b.w / 2), y: sy / z - (b.y + b.h / 2), z },
-      { animation: { duration: 220 } }
-    )
+    // Shared framing (lib/camera.ts frameShape): capped zoom + chrome-aware
+    // centering — same move ImageNodeShape's double-click uses.
+    frameShape(editor, sel.id)
   }
 
   const toggleRegion = () => {
@@ -945,6 +922,13 @@ export function CommandBar() {
       }}
       className="gm-bar"
     >
+      {/* Tray redesign (user 2026-07-22, first-principles pass): the verb
+          row is a MODE SWITCHER (mutually exclusive tools) — tab semantics —
+          so it now sits on TOP of the content it switches, in decision order
+          (pick tool → configure → commit), instead of below the form with
+          the same visual weight as the form's own controls. */}
+      <div style={{ paddingBottom: 8, borderBottom: `1px solid ${color.border}`, marginBottom: 8 }}>{verbRow}</div>
+
       {(!armedTool || !toolReady) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>
@@ -976,7 +960,6 @@ export function CommandBar() {
           {opPrompt && (
             <div style={{ fontSize: typeTok.micro, color: color.textSecondary, fontStyle: 'italic' }}>&ldquo;{opPrompt}&rdquo;</div>
           )}
-          {verbRow}
         </div>
       )}
 
@@ -988,13 +971,26 @@ export function CommandBar() {
               flexDirection: 'column',
               gap: 8,
               paddingBottom: 8,
-              borderBottom: `1px solid ${color.border}`,
-              marginBottom: 8,
             }}
           >
-            {armedTool === 'edit' && (
+            {/* Redesign 2026-07-22: the big "editing" TrayThumb block became
+                a single compact context line (20px inline thumb + header) —
+                context shouldn't cost ~70px of tray height. Style-ref thumbs
+                keep their TrayThumb chips (the detach affordance lives
+                there), rendered as their own row only when refs exist. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {armedTool === 'edit' && p.assetUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.assetUrl}
+                  alt=""
+                  style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
+                />
+              )}
+              <span style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>{trayHeader}</span>
+            </div>
+            {armedTool === 'edit' && refIds.length > 0 && (
               <div style={{ display: 'flex', gap: 8 }}>
-                <TrayThumb src={p.status === 'done' ? p.assetUrl : undefined} label="editing" />
                 {refIds.map((rid) => {
                   const rn = editor.getShape(rid)
                   return (
@@ -1009,7 +1005,6 @@ export function CommandBar() {
                 })}
               </div>
             )}
-            <div style={{ fontFamily: typeTok.fontMono, fontSize: typeTok.micro, color: color.textSecondary }}>{trayHeader}</div>
           </div>
 
           {armedTool === 'edit' && (
@@ -1060,21 +1055,12 @@ export function CommandBar() {
                     lock chip is gone since every model can serve a region
                     now (exact mask vs guided annotation, chosen in
                     run-op.ts's inpaint dispatch by model id). */}
-                <select className="gm-input" value={model} onChange={(e) => setModel(e.target.value)} style={field}>
-                  {EDIT_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                <span style={{ color: color.textSecondary }}>variants:</span>
-                <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn}>
-                  −
-                </button>
-                <span>{variants}</span>
-                <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn}>
-                  +
-                </button>
+                {/* Redesign 2026-07-22 — grouped by function: INPUT
+                    MODIFIERS (Select region, + Reference: they change what
+                    goes into the model) cluster left; EXECUTION SETTINGS
+                    (model, variants) and the COMMIT action (Run) cluster
+                    right, with Run terminal at bottom-right — the same slot
+                    every other tool's Apply occupies. */}
                 <button
                   className="gm-btn"
                   onClick={toggleRegion}
@@ -1134,6 +1120,15 @@ export function CommandBar() {
                     </button>
                   </>
                 )}
+                <span style={{ flex: 1 }} />
+                <ModelSelect value={model} onChange={setModel} options={EDIT_MODELS} ariaLabel="edit model" />
+                <button className="gm-btn" onClick={() => setVariants((v) => Math.max(1, v - 1))} style={stepBtn} title="fewer variants" aria-label="fewer variants">
+                  −
+                </button>
+                <span title="variants" style={{ fontVariantNumeric: 'tabular-nums' }}>{variants}×</span>
+                <button className="gm-btn" onClick={() => setVariants((v) => Math.min(3, v + 1))} style={stepBtn} title="more variants" aria-label="more variants">
+                  +
+                </button>
                 <button
                   className="gm-btn"
                   onClick={runEdit}
@@ -1142,7 +1137,6 @@ export function CommandBar() {
                     ...buttonPrimary({
                       disabled: !prompt.trim() || (regionMode && cropTooSmall(cropFrac, p.naturalW, p.naturalH)),
                     }),
-                    marginLeft: 'auto',
                   }}
                 >
                   Run
@@ -1324,7 +1318,6 @@ export function CommandBar() {
             </div>
           )}
 
-          <div style={{ paddingTop: 8, marginTop: 8, borderTop: `1px solid ${color.border}` }}>{verbRow}</div>
         </div>
       )}
     </div>

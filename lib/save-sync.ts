@@ -43,7 +43,7 @@ export function startSaveSync(editor: Editor, canvasId: string): () => void {
   const unlisten = editor.store.listen(
     () => {
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => void save(), 2000)
+      timer = setTimeout(() => void save(), 1000) // 1s debounce (user 2026-07-22, was 2s)
     },
     { scope: 'document', source: 'user' }
   )

@@ -3,7 +3,7 @@
 import { Tldraw, loadSnapshot, useEditor, useValue, type Editor, type TLShapeId } from 'tldraw'
 import 'tldraw/tldraw.css'
 import { useCallback, useEffect, useRef } from 'react'
-import { ImageNodeUtil, type ImageNodeShape } from '@/components/ImageNodeShape'
+import { ImageNodeUtil, IMAGE_NODE_W, type ImageNodeShape } from '@/components/ImageNodeShape'
 import { layoutTree } from '@/lib/tree'
 import { TopNav } from '@/components/TopNav'
 import { CommandBar } from '@/components/CommandBar'
@@ -89,20 +89,27 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
         })
       }
 
-      // Bug fix (user-reported 2026-07-21): deleting a node left its bound
-      // arrows dangling on the canvas. tldraw removes the BINDING when a bound
-      // shape is deleted, but keeps the arrow shape itself. Cascade-delete
-      // every arrow bound to a deleted image-node (both directions: parent
-      // edges and ref edges). The image-node type guard prevents recursion
-      // when the arrows themselves are then deleted.
-      const stopCascade = editor.sideEffects.registerBeforeDeleteHandler('shape', (shape) => {
+      // Bug fix round 2 (user-reported 2026-07-22, WITH screenshot evidence:
+      // arrows survived node deletion). Root cause found in the installed
+      // @tldraw/editor Editor.mjs: the editor's OWN internal beforeDelete
+      // handler — registered at construction, i.e. always ahead of anything
+      // registered here at mount — calls deleteBindings() for every binding
+      // involving the dying shape BEFORE later handlers run. So the previous
+      // before-delete cascade's getBindingsInvolvingShape() query was always
+      // empty and the whole thing was a silent no-op. Fix inverts the
+      // detection: every arrow this app creates is DOUBLE-bound (createArrow
+      // and the port-dot flow bind both terminals), so after an image-node
+      // deletion, any arrow left with fewer than 2 bindings just lost a
+      // terminal to it — sweep those. after-delete + arrow-type filter also
+      // prevents recursion (the swept arrows re-trigger only for type
+      // 'arrow', which returns early).
+      const stopCascade = editor.sideEffects.registerAfterDeleteHandler('shape', (shape) => {
         if (shape.type !== 'image-node') return
-        // getBindingsInvolvingShape (not just ...ToShape): belt-and-braces
-        // across binding directions; arrow shape id is binding.fromId. The
-        // registered before-delete point still sees the bindings (tldraw
-        // removes them after shape before-delete handlers run).
-        const arrowIds = [...new Set(editor.getBindingsInvolvingShape(shape.id, 'arrow').map((b) => b.fromId))]
-        if (arrowIds.length) editor.deleteShapes(arrowIds)
+        const orphans = editor
+          .getCurrentPageShapes()
+          .filter((a) => a.type === 'arrow' && editor.getBindingsFromShape(a.id, 'arrow').length < 2)
+          .map((a) => a.id)
+        if (orphans.length) editor.deleteShapes(orphans)
       })
 
       let stopSaveSync: (() => void) | null = null
@@ -118,6 +125,15 @@ export function CanvasApp({ canvasId }: { canvasId: string }) {
             // carry a fal queue request id survived the sweep — re-attach
             // polling so their results land in THIS session.
             resumePendingOps(editor)
+            // One-time heal for snapshots saved while the arrow cascade was
+            // broken (see the delete-handler comment below): arrows that
+            // already lost a terminal binding to a past node deletion are
+            // orphans — same <2-bindings rule the live cascade now uses.
+            const orphanArrows = editor
+              .getCurrentPageShapes()
+              .filter((a) => a.type === 'arrow' && editor.getBindingsFromShape(a.id, 'arrow').length < 2)
+              .map((a) => a.id)
+            if (orphanArrows.length) editor.deleteShapes(orphanArrows)
           }
         } catch {
           // Network error: fall through and start empty, same as a 404.
@@ -463,13 +479,34 @@ function ZoomCluster() {
             .getCurrentPageShapes()
             .filter((s): s is ImageNodeShape => s.type === 'image-node')
           if (!ns.length) return
-          const posMap = layoutTree(
-            ns.map((s) => ({ id: s.id, w: s.props.w, h: s.props.h, sourceId: s.props.sourceId }))
-          )
+          // Round 2 (user 2026-07-22, after seeing the first Tidy result):
+          // wildly mixed on-canvas sizes made even a correct tree read
+          // ragged. Tidy now also NORMALIZES every node to the standard
+          // 240px width (aspect preserved) — it's an explicit whole-canvas
+          // cleanup action and a single undo restores both positions and
+          // sizes. Children sort by seq so sibling stacks follow version
+          // order top-to-bottom.
+          const sorted = [...ns].sort((a, b) => a.props.seq - b.props.seq)
+          const layoutInput = sorted.map((s) => {
+            const ratio =
+              s.props.naturalW > 0 && s.props.naturalH > 0
+                ? s.props.naturalH / s.props.naturalW
+                : Math.max(0.3, (s.props.h - 18) / Math.max(1, s.props.w))
+            const w = IMAGE_NODE_W
+            const h = Math.round(w * ratio) + 18
+            return { id: s.id as string, w, h, sourceId: s.props.sourceId }
+          })
+          const posMap = layoutTree(layoutInput)
           editor.updateShapes(
-            ns.map((s) => {
-              const p = posMap.get(s.id)!
-              return { id: s.id, type: 'image-node' as const, x: p.x, y: p.y }
+            layoutInput.map((n) => {
+              const p = posMap.get(n.id)!
+              return {
+                id: n.id as ImageNodeShape['id'],
+                type: 'image-node' as const,
+                x: p.x,
+                y: p.y,
+                props: { w: n.w, h: n.h },
+              }
             })
           )
           editor.zoomToFit({ animation: { duration: 220 } })

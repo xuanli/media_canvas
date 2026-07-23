@@ -20,6 +20,7 @@ import { useUiStore } from '@/lib/ui-store'
 import { CropOverlay } from '@/components/overlays/CropOverlay'
 import { RegionOverlay } from '@/components/overlays/RegionOverlay'
 import { color, metric, type as typeTok } from '@/lib/design'
+import { frameShape } from '@/lib/camera'
 import { IconSpinner, IconWarning } from '@/components/icons'
 
 /**
@@ -208,6 +209,16 @@ export class ImageNodeUtil extends ShapeUtil<ImageNodeShape> {
   // installed 5.2.5 types), constraining every handle drag proportionally.
   override isAspectRatioLocked() {
     return true
+  }
+
+  // Double-click frames the node (user 2026-07-22 — a "look at this one"
+  // gesture). An earlier version of this used raw zoomToBounds and was
+  // removed as jarring (615% on small nodes); frameShape caps the zoom and
+  // centers within the visible band above the command bar, since selection
+  // auto-arms the Edit tray. Runs outside React render (tldraw pointer
+  // callback), `this.editor` is set by the base ShapeUtil constructor.
+  override onDoubleClick(shape: ImageNodeShape) {
+    frameShape(this.editor, shape.id)
   }
 
   override onResize(shape: ImageNodeShape, info: TLResizeInfo<ImageNodeShape>) {

@@ -1,6 +1,6 @@
 import { createShapeId, toRichText, type Editor, type TLShapeId } from 'tldraw'
 import { opLabel, type Operation, type OpsResponse } from '@/lib/types'
-import { nextSeq, placeChildren, GAP_X } from '@/lib/tree'
+import { nextSeq, placeChildren, GAP_X, GAP_Y } from '@/lib/tree'
 import { apiPost } from '@/lib/api-client'
 import type { ImageNodeShape } from '@/components/ImageNodeShape'
 import { IMAGE_NODE_W } from '@/components/ImageNodeShape'
@@ -91,7 +91,17 @@ export function runOp(
     : { x: 100, y: 100 + all.length * 40, w: IMAGE_NODE_W, h: 150 }
   const occupiedBoxes = all.map((s) => ({ x: s.x, y: s.y, w: s.props.w, h: s.props.h }))
   const spots = parent
-    ? placeChildren(parentBox, variants, occupiedBoxes)
+    ? // Variant-placement fix (user 2026-07-22: new variants overlapped
+      // existing nodes): occupied boxes are padded by a gap in both axes
+      // during the search. The vertical padding matters most — a pending
+      // child is placed at the PARENT's height, but grows when the result's
+      // real aspect lands (done()'s h recompute), so unpadded placement let
+      // nodes end up touching/overlapping after results arrived.
+      placeChildren(
+        parentBox,
+        variants,
+        occupiedBoxes.map((b) => ({ ...b, w: b.w + GAP_X / 2, h: b.h + GAP_Y }))
+      )
     : placeChildren(
         { x: parentBox.x - IMAGE_NODE_W - GAP_X, y: parentBox.y, w: IMAGE_NODE_W, h: parentBox.h },
         variants,
